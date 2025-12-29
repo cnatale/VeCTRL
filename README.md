@@ -8,7 +8,10 @@ VeCTRL is a vector-driven control architecture for real-time agents. It combines
 
 ## Control Loop
 
-The control loop uses [Temporal Difference (TD)](https://en.wikipedia.org/wiki/Temporal_difference_learning) learning to optimize next action selection based on interaction with its environment.
+The core loop uses [Temporal Difference (TD)](https://en.wikipedia.org/wiki/Temporal_difference_learning) learning to optimize next action selection based on interaction with its environment.
+
+The LLM planner selects the current state (ex: attacking, running, hiding...). The current state is represented as a vector of weights applied to sensory input. The goal is to optimize for different behaviors when in different states.
+
 
 ```mermaid
 flowchart LR
