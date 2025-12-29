@@ -8,6 +8,8 @@ VeCTRL is a vector-driven control architecture for real-time agents. It combines
 
 ## Control Loop
 
+The control loop uses [Temporal Difference (TD)](https://en.wikipedia.org/wiki/Temporal_difference_learning) learning to optimize next action selection based on interaction with its environment.
+
 ```mermaid
 flowchart LR
   %% VeCTRL: Vector-driven Control Loop
