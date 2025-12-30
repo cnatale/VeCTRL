@@ -79,3 +79,16 @@ Every n seconds, an LLM planner agent selects the current Skill that the core lo
 Skills can be considered "temporary operating regimes" for the core control loop. The core control loop always selects actions. The selected skill transforms the state + action selection + cost function update space.
 
 > An LLM selecting skills every few seconds doesn’t interfere with in-the-loop action selection — it reshapes the **action space** and **learning dynamics** so that the fast loop selects a best action with intent, coherence, and safety.
+
+Formally, skills are a tuple as follows:
+```
+σ = ⟨
+  Mσ,        // memory visibility / filtering
+  Wσ,        // distance or score shaping
+  Rσ,        // reward / loss definition
+  Uσ,        // update policy (optional but important)
+  Tσ         // termination / persistence rules
+⟩
+```
+
+For more on skills, read SKILLS.md.
