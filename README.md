@@ -1,6 +1,8 @@
 # VeCTRL
 VeCTRL is a vector-driven control architecture for real-time agents. It combines high-dimensional sensory embeddings, memory-based retrieval, and adaptive action selection inside a closed-loop controller.
 
+This is paired with powerful long-term planning via LLM skill creation + selection.
+
 ## Levels of Control
 1. LLM Policy: Creates loss functions mapped to concrete goals ("move forward," "stop," "dance")
 2. Online vector-based Q Learning for VeCTRL Core
