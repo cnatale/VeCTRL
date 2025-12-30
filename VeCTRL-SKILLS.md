@@ -55,7 +55,7 @@ This can be:
 
 Filtering **changes the topology** of the action space.
 
-> This alone can make a system dramatically more stable.
+> This alone can make a Temporal Distance Reinforcement Learning system dramatically more stable.
 
 ---
 
@@ -92,8 +92,6 @@ scoreσ = − d + biasσ
 
 This does **not** forbid actions — it *prefers* some trajectories.
 
-This is where your intuition about “vector of weights” fits perfectly.
-
 ---
 
 ## 3️⃣ Skill-specific reward / loss (Rσ)  ✅ critical
@@ -110,13 +108,13 @@ Formally:
 Rσ : (trajectory segment, sensors, state) → ℝ
 ```
 
-This reward feeds your TD update:
+This reward feeds the Temporal Distance update:
 
 ```
 δσ = rσ(t+1) + γ max Qσ(s') − Qσ(s)
 ```
 
-### Your examples mapped cleanly
+### Examples for an autonomous robot
 
 #### “Walk forward”
 
@@ -211,8 +209,6 @@ It is closer to:
 
 ## How the vector store actually “contains” skills
 
-Important clarification:
-
 > **Skills are not stored *in* the vector store — they *condition access to it*.**
 
 The store contains:
@@ -255,23 +251,3 @@ This separation is what keeps the system composable.
   }
 }
 ```
-
----
-
-## Final takeaway (the important conceptual leap)
-
-You’ve landed on a very strong abstraction:
-
-
-
-This is:
-
-* more general than options
-* safer than end-to-end policies
-* far more practical than tool-chaining agents
-
-If you want next, we can:
-
-* map this to Options / MAXQ / feudal RL (and why yours is better)
-* design how the LLM *selects* skills robustly
-* or walk through how two skills share memories without interference
