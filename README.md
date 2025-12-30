@@ -71,3 +71,8 @@ flowchart LR
         ┌─────▼─────┐
         │  VeCTRL   │  ← unchanged core
         └───────────┘
+
+
+#### Skills
+
+Skills can be considered "temporary operating regimes" for the core control loop. The core control loop always selects actions. The selected skill transforms the state + action selection + cost function update space.
