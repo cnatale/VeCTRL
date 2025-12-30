@@ -60,6 +60,7 @@ flowchart LR
         └────────────┘
 
 ### Outside the Loop
+Every n seconds, an LLM planner agent selects the current Skill that the core loop uses to shape action selection + future rewards.
 
         ┌───────────┐
         │   LLM     │
