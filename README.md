@@ -76,3 +76,5 @@ flowchart LR
 #### Skills
 
 Skills can be considered "temporary operating regimes" for the core control loop. The core control loop always selects actions. The selected skill transforms the state + action selection + cost function update space.
+
+> An LLM selecting skills every few seconds doesn’t interfere with in-the-loop action selection — it reshapes the **action space** and **learning dynamics** so that the fast loop selects a best action with intent, coherence, and safety.
