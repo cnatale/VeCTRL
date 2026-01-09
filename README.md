@@ -1,4 +1,12 @@
 # VeCTRL
+## What
+
+VeCTRL fixes what’s broken about today’s AI agents: they reason well, but they don’t control well.
+
+At the core is a fast, deterministic control loop that learns by mapping sensor streams into vector memories of actions that worked—or failed—under similar conditions. That loop runs independently of LLMs, so it stays stable, low-latency, and safe.
+
+## How
+
 VeCTRL is a vector-driven control architecture for real-time agents. It combines high-dimensional sensory embeddings, memory-based retrieval, and adaptive action selection inside a closed-loop controller.
 
 This is paired with powerful long-term planning via LLM skill creation + selection.
