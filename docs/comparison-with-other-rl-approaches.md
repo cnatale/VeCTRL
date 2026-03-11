@@ -51,9 +51,7 @@ In VeCTRL:
   * distance shaping
   * reward gradient
 
-👉 Your Skill replaces *policy definition* with **objective + constraint definition**.
-
-That’s already a major upgrade.
+Skills replace *policy definition* with **objective + constraint definition**.
 
 ---
 

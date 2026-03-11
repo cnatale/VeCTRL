@@ -1,7 +1,7 @@
 # VeCTRL
 ## What
 
-VeCTRL fixes what’s broken about today’s AI agents: they reason well, but they don’t control well.
+VeCTRL is an AI control system that lets agents interact with the physical world in real time using cheap hardware like SoC's, microcontrollers and servos.
 
 At the core is a fast, deterministic control loop that learns by mapping sensor streams into vector memories of actions that worked—or failed—under similar conditions. That loop runs independently of LLMs, so it stays stable, low-latency, and safe.
 
@@ -13,7 +13,7 @@ This is paired with powerful long-term planning via LLM skill creation + selecti
 
 ## Levels of Control
 1. LLM Policy: Creates loss functions mapped to concrete goals ("move forward," "stop," "dance")
-2. Online vector-based Q Learning for VeCTRL Core
+2. Online vector-based Q-Learning for VeCTRL Core
 3. Offline creation of new high-dimensional points for VeCTRL Core, allowing for adaptive pattern definition
 
 ## Control Loop
@@ -28,20 +28,20 @@ flowchart LR
   %% VeCTRL: Vector-driven Control Loop
 
   S([Sensors<br/>n-dim signals])
-  E[[Embed / Window<br/>→ v⃗_t]]
+  E[[Embed / Sliding Window<br/>→ v⃗_t]]
   M[(Vector Memory<br/>ANN / kNN)]
   P{{Policy / Selector<br/>argmax / sample}}
   A([Actuators<br/>m-dim impulses])
 
   %% Main flow
-  S --> E --> P --> A
+  S --> E/M --> P --> A
 
   %% Memory retrieval + writeback
   E -->|query| M
   M -->|neighbors| P
   A -->|feedback: new sensory input| S
 
-  %% Learning / rescoring (optional but on-brand)
+  %% Learning / rescoring
   A -.->|reward / loss / TD error| M
 
 ```
@@ -88,7 +88,7 @@ Every n seconds, an LLM planner agent selects the current Skill that the core lo
 
 Skills can be considered "temporary operating regimes" for the core control loop. The core control loop always selects actions. The selected skill transforms the state + action selection + cost function update space.
 
-> An LLM selecting skills every few seconds doesn’t interfere with in-the-loop action selection — it reshapes the **action space** and **learning dynamics** so that the fast loop selects a best action with intent, coherence, and safety.
+> An LLM selecting skills every few seconds doesn’t interfere with in-the-loop action selection. Instead, it reshapes the **action space** and **learning dynamics** so that the fast loop selects a best action with intent, coherence, and safety.
 
 Formally, skills are a tuple as follows:
 ```
