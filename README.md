@@ -101,4 +101,4 @@ Formally, skills are a tuple as follows:
 ⟩
 ```
 
-For more on skills, read [VeCTRL-SKILLS.md](https://github.com/cnatale/VeCTRL/blob/main/VeCTRL-SKILLS.md).
+For more on skills, read [VeCTRL-SKILLS.md](https://github.com/cnatale/VeCTRL/blob/main/docs/VeCTRL-SKILLS.md).

@@ -1,7 +1,7 @@
 # Skills
 > **A Skill is a temporary redefinition of “good behavior” over the same underlying memory and control machinery.**
 
-VeCTRL Skills are a subset of [Anthropic's Agent Skills Specification](https://agentskills.io/specification)
+VeCTRL Skills are a subset of [Agent Skills Open Specification](https://agentskills.io/specification)
 
 ---
 
@@ -22,12 +22,10 @@ Consider VeCTRL Skill `σ` as a tuple:
   Mσ,        // memory visibility / filtering
   Wσ,        // distance or score shaping
   Rσ,        // reward / loss definition
-  Uσ,        // update policy (optional but important)
+  Uσ,        // update policy
   Tσ         // termination / persistence rules
 ⟩
 ```
-
-Only the first **three** are strictly required.
 
 ---
 
@@ -90,7 +88,7 @@ scoreσ = − d + biasσ
 
 ### Interpretation
 
-This does **not** forbid actions — it *prefers* some trajectories.
+This does **not** forbid actions; instead it *prefers* some trajectories.
 
 ---
 
@@ -141,11 +139,9 @@ Notice:
 * different gradient
 * different learned surface
 
-This is exactly correct.
-
 ---
 
-## 4️⃣ Update policy (Uσ) — optional but *very* valuable
+## 4️⃣ Update policy (Uσ) hyperparameters
 
 This governs **how learning happens under this skill**.
 
@@ -227,7 +223,7 @@ This separation is what keeps the system composable.
 
 ---
 
-## Minimal viable Skill schema (what I’d actually implement)
+## Minimal viable Skill schema
 
 ```json
 {
