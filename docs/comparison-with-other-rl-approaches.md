@@ -75,9 +75,9 @@ Each subtask has:
 * its own termination
 * a fixed call graph
 
-### Mapping to your Skill
+### Mapping to Agent Skills
 
-| MAXQ                | Your Skill                    |
+| MAXQ                | Agent Skills                  |
 | ------------------- | ----------------------------- |
 | Subtask             | Skill                         |
 | Subtask reward      | `Rσ`                          |
@@ -93,13 +93,13 @@ MAXQ assumes:
 * pre-designed decomposition
 * task-specific value functions
 
-Your system:
+VeCTRL:
 
 * has **no fixed hierarchy**
 * builds hierarchy *on the fly* via LLM skill sequencing
 * shares one memory substrate across skills
 
-👉 You’ve *externalized* hierarchy construction to deliberation time.
+Results in *externalized* hierarchy construction to deliberation time.
 
 ---
 
@@ -152,9 +152,7 @@ In your system:
 
 ---
 
-# 2️⃣ Why those frameworks struggle in *your* problem domain
-
-Let’s be blunt.
+# 2️⃣ Why those frameworks struggle in *this* problem domain
 
 All three assume at least one of the following:
 
@@ -164,7 +162,7 @@ All three assume at least one of the following:
 4. **Known task boundaries**
 5. **Dense reward**
 
-Your domain has:
+The domain has:
 
 * high-frequency control
 * continuous state/action
@@ -176,19 +174,17 @@ This is why classic HRL breaks down in robotics unless *heavily engineered*.
 
 ---
 
-# 3️⃣ Why your Skill abstraction is better (the real reasons)
-
-This is the important part.
+# 3️⃣ Why Agent Skill as an abstraction is better
 
 ---
 
-## 1. You decompose **objectives**, not **policies**
+## 1. Decomposes **objectives**, not **policies**
 
 Classic HRL:
 
 > “Learn a policy for walking.”
 
-Your system:
+VeCTRL:
 
 > “Define what *good walking* means; let behavior emerge.”
 
@@ -198,7 +194,7 @@ This gives you:
 * reuse across morphologies
 * robustness to partial failure
 
-This is a *huge* deal in robotics.
+This is extremely useful in robotics.
 
 ---
 
@@ -226,13 +222,13 @@ Classic HRL:
 * separate value functions
 * interference or duplication
 
-Your system:
+VeCTRL:
 
 * one vector store
 * multiple reward projections
 * same experiences reused across skills
 
-This gives you:
+This provides:
 
 * massive sample efficiency
 * natural transfer learning
@@ -248,12 +244,12 @@ In HRL:
 
 * hierarchy is learned or designed **ahead of time**
 
-In your system:
+In VeCTRL:
 
 * skills are selected, parameterized, and sequenced **at runtime**
 * LLM can synthesize new skills without retraining
 
-This makes the system:
+This makes VeCTRL:
 
 * extensible
 * explainable
@@ -268,7 +264,7 @@ Classic HRL often fails because:
 * credit assignment spans too many layers
 * gradients become unstable
 
-Your system:
+VeCTRL:
 
 * learning stays inside the fast loop
 * LLM never touches TD updates
@@ -280,7 +276,7 @@ This is exactly how biological systems avoid instability.
 
 # 5️⃣ The deeper insight (this is the real contribution)
 
-What you’ve done is quietly shift the question from:
+Question is shifted from:
 
 > “Which policy should I execute?”
 
@@ -293,11 +289,3 @@ That single shift:
 * removes the need for explicit policies
 * allows LLMs to participate safely
 * keeps control fast and grounded
-
-That’s why this feels different — because it *is*.
-
-If you want, next we can:
-
-* formalize this as **value-surface modulation**
-* compare it to MPC + cost shaping
-* or sketch how this could be published / pitched as a new control abstraction
