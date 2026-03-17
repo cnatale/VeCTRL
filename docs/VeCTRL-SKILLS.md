@@ -3,6 +3,7 @@
 
 VeCTRL Skills are a subset of [Agent Skills Open Specification](https://agentskills.io/specification)
 
+
 ---
 
 A Skill is best understood as a **runtime control context** that reshapes:
@@ -247,3 +248,96 @@ This separation is what keeps the system composable.
   }
 }
 ```
+
+
+# LLM-Generated Skills
+
+In VeCTRL, skills can be authored by humans or generated dynamically by language models.
+
+The purpose of LLM-generated skills is to provide **structured abstractions over reinforcement learning control.**
+
+A skill can define:
+
+• state filters  
+• available actions  
+• reward/cost functions  
+• reinforcement learning hyperparameters  
+
+Example skill:
+Skill: obstacle_avoidance
+
+state_filter:
+distance_sensor < 0.5m
+
+actions:
+rotate_left
+rotate_right
+step_back
+
+reward_function:
+	•	distance_from_obstacle
+
+	•	energy_cost
+
+hyperparameters:
+gamma: 0.9
+learning_rate: 0.05
+Skills reshape the effective state space by restricting which actions and rewards are active.
+
+This allows the planner to change agent behavior by activating or generating skills.
+
+---
+
+# Dynamic Skill Generation
+
+Language models can generate new skills in response to:
+
+• planning requirements  
+• failure analysis  
+• environment observations  
+
+Example:
+Goal: navigate around obstacles
+
+LLM generates:
+
+skill: cautious_navigation
+
+actions:
+slow_forward
+rotate_small
+
+reward:
+	•	forward_progress
+
+	•	proximity_to_obstacle
+
+These skills then influence the reinforcement learning controller.
+
+---
+
+# Skill Composition
+
+Plans are expressed as sequences or hierarchies of skills.
+
+Example:
+plan:
+	1.	locate_object
+	2.	walk_to_object
+	3.	grasp_object
+	4.	walk_to_target
+	5.	place_object
+
+Each step activates a different skill configuration.
+
+---
+
+# Skill Influence on Control
+
+When a skill is active it modifies:
+vector memory filtering
+reward evaluation
+action selection
+learning hyperparameters
+
+This allows the planner to shape the control system without retraining policies.

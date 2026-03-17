@@ -284,8 +284,64 @@ to:
 
 > **“What should count as success right now?”**
 
-That single shift:
+This shift:
 
 * removes the need for explicit policies
 * allows LLMs to participate safely
 * keeps control fast and grounded
+
+---
+
+# Comparison With Neural Policy Reinforcement Learning
+
+Traditional reinforcement learning systems rely on neural policies.
+```
+state → neural network → action
+```
+
+Updating behavior typically requires training iterations.
+
+VeCTRL instead uses vector memory retrieval.
+```state embedding → vector search → action selection```
+
+---
+
+# Advantages of Vector-Based Control
+
+### Real-Time Reward Shaping
+
+Reward functions can be modified immediately without retraining policies.
+
+### Experience-Based State Representation
+
+State regions visited frequently accumulate higher vector density, improving control precision in relevant areas.
+
+### Transparent Behavior
+
+Actions are derived from stored experiences rather than opaque neural weights.
+
+---
+
+# LLM-Guided Reinforcement Learning
+
+A key extension explored in VeCTRL is the use of language models to guide reinforcement learning systems.
+
+Language models can:
+
+• generate new skills  
+• modify reward functions  
+• adjust learning hyperparameters  
+• plan sequences of skills  
+
+This creates a hierarchical architecture:
+```
+LLM reasoning
+↓
+skill generation
+↓
+vector RL controller
+↓
+environment interaction
+```
+
+The goal is to combine the **reasoning capabilities of language models** with the **adaptive learning of reinforcement learning systems.**

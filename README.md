@@ -1,104 +1,120 @@
 # VeCTRL
-## What
 
-VeCTRL is an AI control system that lets agents interact with the physical world in real time using cheap hardware like SoC's, microcontrollers and servos.
+VeCTRL (Vector Control Loop) is an experimental architecture for **embodied AI systems that combine vector-based reinforcement learning with LLM-guided skill generation and planning.**
 
-At the core is a fast, deterministic control loop that learns by mapping sensor streams into vector memories of actions that worked—or failed—under similar conditions. That loop runs independently of LLMs, so it stays stable, low-latency, and safe.
+The system explores a hybrid approach to control where:
 
-## How
+• **Vector memory retrieval** performs real-time action selection  
+• **Q-learning updates** adapt behavior through experience  
+• **LLMs generate skills, reward functions, and plans** that shape the learning system  
 
-VeCTRL is a vector-driven control architecture for real-time agents. It combines high-dimensional sensory embeddings, memory-based retrieval, and adaptive action selection inside a closed-loop controller.
+The core idea is that **control policies do not need to be learned purely through neural networks**.
 
-This is paired with powerful long-term planning via LLM skill creation + selection.
+Instead, behavior can emerge through:
 
-## Levels of Control
-1. LLM Policy: Creates loss functions mapped to concrete goals ("move forward," "stop," "dance")
-2. Online vector-based Q-Learning for VeCTRL Core
-3. Offline creation of new high-dimensional points for VeCTRL Core, allowing for adaptive pattern definition
+state embeddings → vector memory retrieval → action selection → reinforcement updates
 
-## Control Loop
+This enables a system that can:
 
-The core loop uses [Temporal Difference (TD)](https://en.wikipedia.org/wiki/Temporal_difference_learning) learning to optimize next action selection based on interaction with its environment.
+• adapt behavior instantly through reward shaping  
+• dynamically refine the representation of frequently visited states  
+• integrate symbolic planning with continuous control  
+• learn from experience without retraining large neural policies  
 
-The LLM planner selects the current state (ex: attacking, running, hiding...). The current state is represented as a vector of weights applied to sensory input. The goal is to optimize for different behaviors when in different states.
+---
 
+# Core Hypothesis
 
-```mermaid
-flowchart LR
-  %% VeCTRL: Vector-driven Control Loop
+The central hypothesis of VeCTRL is:
 
-  S([Sensors<br/>n-dim signals])
-  E[[Embed / Sliding Window<br/>→ v⃗_t]]
-  M[(Vector Memory<br/>ANN / kNN)]
-  P{{Policy / Selector<br/>argmax / sample}}
-  A([Actuators<br/>m-dim impulses])
+> Vector-based reinforcement learning combined with LLM-generated skill structures can produce adaptive embodied agents that learn efficiently while remaining interpretable and controllable.
 
-  %% Main flow
-  S --> E/M --> P --> A
+The architecture separates **three layers of intelligence**:
 
-  %% Memory retrieval + writeback
-  E -->|query| M
-  M -->|neighbors| P
-  A -->|feedback: new sensory input| S
+| Layer | Role |
+|------|------|
+| Control Loop | Real-time action selection using vector Q-learning |
+| Skills | Structured behavior definitions that shape state and action spaces |
+| Planning | High-level reasoning using transformer models |
 
-  %% Learning / rescoring
-  A -.->|reward / loss / TD error| M
+---
 
-```
+# Architecture Overview
+Planner (LLM)
+↓
+Plan generation
 
-### Core Loop
+Skill Layer
+↓
+Skills define:
+	•	state filters
+	•	action subsets
+	•	reward functions
+	•	hyperparameters
 
-        ┌────────────┐
-        │  Sensors   │
-        └─────┬──────┘
-              │  n-dim vector
-              ▼
-        ┌────────────┐
-        │  Embedding │
-        │  / Memory  │◄───┐
-        └─────┬──────┘    │
-              │ kNN / ANN │ feedback
-              ▼           │
-        ┌────────────┐    │
-        │ Action /   │────┘
-        │ Control    │
-        └─────┬──────┘
-              │ m-dim impulses
-              ▼
-        ┌────────────┐
-        │  Actuators │
-        └────────────┘
+Vector RL Controller
+↓
+state embedding → KNN retrieval → action selection
 
-### Outside the Loop
-Every n seconds, an LLM planner agent selects the current Skill that the core loop uses to shape action selection + future rewards.
+Fast Control Loop
+↓
+real-world interaction
 
-        ┌───────────┐
-        │   LLM     │
-        │ Planner   │
-        └─────┬─────┘
-              │
-          (sets goals)
-              │
-        ┌─────▼─────┐
-        │  VeCTRL   │  ← unchanged core
-        └───────────┘
+---
 
+# Why Vector Memory Instead of Neural Policies?
 
-#### Skills
+Most reinforcement learning systems rely on neural networks that require training to update behavior.
 
-Skills can be considered "temporary operating regimes" for the core control loop. The core control loop always selects actions. The selected skill transforms the state + action selection + cost function update space.
+Vector-based policies allow:
 
-> An LLM selecting skills every few seconds doesn’t interfere with in-the-loop action selection. Instead, it reshapes the **action space** and **learning dynamics** so that the fast loop selects a best action with intent, coherence, and safety.
+### Real-Time Behavior Shaping
 
-Formally, skills are a tuple as follows:
-```
-σ = ⟨
-  Mσ,        // memory visibility / filtering
-  Wσ,        // distance or score shaping
-  Rσ,        // reward / loss definition
-  Uσ,        // update policy (optional but important)
-  Tσ         // termination / persistence rules
-⟩
-```
+Reward functions and action scoring can be modified dynamically without retraining.
 
-For more on skills, read [VeCTRL-SKILLS.md](https://github.com/cnatale/VeCTRL/blob/main/docs/VeCTRL-SKILLS.md).
+### Experience-Dense State Representation
+
+Regions of the state space that the system visits frequently naturally accumulate more memory points, producing higher control precision where it matters most.
+
+### Interpretable Control Policies
+
+Memory entries directly represent experienced states and actions rather than opaque neural weights.
+
+---
+
+# Key Research Questions
+
+The project investigates several open questions:
+
+1. **Can LLM-generated skills effectively shape reinforcement learning behavior?**
+
+2. **Can LLMs dynamically tune reinforcement learning hyperparameters during operation?**
+
+3. **Does adaptive vector memory density improve control stability in frequently visited states?**
+
+4. **Can vector memory controllers serve as a substrate for reusable agent skills?**
+
+---
+
+# Current Status
+
+VeCTRL is an experimental research project exploring architectures for **embodied AI systems that integrate reinforcement learning and language models.**
+
+The current focus is on:
+
+• vector-space Q-learning controllers  
+• LLM-generated agent skills  
+• real-time reward shaping  
+• hierarchical planning over skills  
+
+---
+
+# Long-Term Vision
+
+The long-term goal of VeCTRL is to explore architectures for agents that combine:
+
+* fast, experience-driven control loops
+* structured skill libraries
+* language-model reasoning
+
+This combination could enable agents that can **learn continuously while remaining interpretable and controllable.**
