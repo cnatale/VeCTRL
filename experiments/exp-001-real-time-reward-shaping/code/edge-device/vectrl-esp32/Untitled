@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-
-mpremote connect auto fs cp main.py :
-echo "Copied main.py to device"
