@@ -1,5 +1,8 @@
 ### Experiment 001 — Real-time reward shaping on a single-servo rig
 
+#### Hypothesis
+A vector-memory controller can be behaviorally reshaped in real time by modifying reward/cost functions without retraining a policy network.
+
 #### Setup
 Create a simple servo rig with one controllable degree of freedom.
 
@@ -7,9 +10,6 @@ Possible task ideas:
 - move toward a target angle
 - hold a target angle despite perturbation
 - minimize oscillation while reaching a target
-
-#### Hypothesis
-A vector-memory controller can be behaviorally reshaped in real time by modifying reward/cost functions without retraining a policy network.
 
 #### Why it matters
 This directly tests one of the main reasons VeCTRL exists:
