@@ -2,4 +2,14 @@
 set -euo pipefail
 
 PORT="${1:-auto}"
-mpremote connect "$PORT" soft-reset
+MPREMOTE="${MPREMOTE:-mpremote}"
+BOOT_DELAY_SECONDS="${BOOT_DELAY_SECONDS:-2}"
+
+if ! command -v "$MPREMOTE" >/dev/null 2>&1; then
+  echo "mpremote not found in PATH. Activate your venv first (e.g. source .venv/bin/activate)." >&2
+  exit 1
+fi
+
+echo "Resetting device on port: $PORT"
+"$MPREMOTE" connect "$PORT" sleep "$BOOT_DELAY_SECONDS"
+echo "Device reset complete"
