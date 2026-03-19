@@ -58,21 +58,20 @@ set_servo_angle(90)
 time.sleep(1)
 
 while True:
-    # select random servo to move
-    servo_number = random.randint(1, 4)
+    # loop over all servos
+    for servo_number in range(1, 5):
+        print("Left")
+        set_servo_angle(60, servo_number)
+        time.sleep(1)
 
-    print("Left")
-    set_servo_angle(60, servo_number)
-    time.sleep(1)
+        print("Center")
+        set_servo_angle(90, servo_number)
+        time.sleep(1)
 
-    print("Center")
-    set_servo_angle(90, servo_number)
-    time.sleep(1)
+        print("Right")
+        set_servo_angle(120, servo_number)
+        time.sleep(1)
 
-    print("Right")
-    set_servo_angle(120, servo_number)
-    time.sleep(1)
-
-    print("Center")
-    set_servo_angle(90, servo_number)
-    time.sleep(1)
+        print("Center")
+        set_servo_angle(90, servo_number)
+        time.sleep(1)

@@ -1,10 +1,13 @@
 from machine import Pin, I2C
 import time
+import random
 
 # Freenove Smart Car Shield for RPi exposes a controller at 0x18 over I2C.
-# Its servo outputs are not driven by a raw PCA9685 at 0x40.
 I2C_ADDR = 0x18
 CMD_SERVO1 = 0
+CMD_SERVO2 = 1
+CMD_SERVO3 = 2
+CMD_SERVO4 = 3
 SERVO_MIN_US = 500
 SERVO_MAX_US = 2500
 
@@ -31,10 +34,10 @@ def write_reg(cmd, value):
         time.sleep_ms(2)
 
 
-def set_servo1_angle(angle):
+def set_servo_angle(angle, servo_number = 1):
     pulse_us = angle_to_pulse_us(angle)
-    print("Servo1 angle:", angle, "pulse_us:", pulse_us)
-    write_reg(CMD_SERVO1, pulse_us)
+    print(f"Servo{servo_number} angle:", angle, "pulse_us:", pulse_us)
+    write_reg(CMD_SERVO1 + servo_number - 1, pulse_us)
 
 
 print("Scanning I2C...")
@@ -51,22 +54,24 @@ print("Note: Servo ports need the shield LOAD power path enabled.")
 print("Make sure the shield has external DC power and both CTRL and LOAD switches are ON.")
 
 print("Centering servo...")
-set_servo1_angle(90)
+set_servo_angle(90)
 time.sleep(1)
 
 while True:
-    print("Left")
-    set_servo1_angle(60)
-    time.sleep(1)
+    # loop over all servos
+    for servo_number in range(1, 5):
+        print("Left")
+        set_servo_angle(60, servo_number)
+        time.sleep(1)
 
-    print("Center")
-    set_servo1_angle(90)
-    time.sleep(1)
+        print("Center")
+        set_servo_angle(90, servo_number)
+        time.sleep(1)
 
-    print("Right")
-    set_servo1_angle(120)
-    time.sleep(1)
+        print("Right")
+        set_servo_angle(120, servo_number)
+        time.sleep(1)
 
-    print("Center")
-    set_servo1_angle(90)
-    time.sleep(1)
+        print("Center")
+        set_servo_angle(90, servo_number)
+        time.sleep(1)
