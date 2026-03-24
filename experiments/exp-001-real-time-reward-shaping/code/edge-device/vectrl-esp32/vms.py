@@ -34,14 +34,16 @@ class VectorMemoryStore:
             "skill_id":    str,           # for partition filtering (Exp 3+)
         }
 
-    MAX_ENTRIES is a hard cap. When full, the lowest-Q entry is evicted.
+    MAX_ENTRIES is a hard cap. Once full, new inserts are skipped so the
+    controller stays on a fixed memory footprint.
     """
 
-    MAX_ENTRIES = 200
+    MAX_ENTRIES = 128
 
-    def __init__(self, state_dim: int, action_set: list):
+    def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim
         self.action_set = action_set
+        self.max_entries = max_entries if max_entries is not None else self.MAX_ENTRIES
         self._entries = []
 
     # ------------------------------------------------------------------
@@ -67,15 +69,15 @@ class VectorMemoryStore:
         Returns list of (entry_index, distance) sorted by ascending distance.
         Returns [] if no visible entries exist within radius.
         """
-        visible = self._filter(required_tags, excluded_tags, partition)
-        if not visible:
-            return []
-
         results = []
-        for idx in visible:
-            entry = self._entries[idx]
+        radius_sq = neighbor_radius * neighbor_radius
+        for idx, entry in enumerate(self._entries):
+            if not self._matches_filters(
+                entry, required_tags, excluded_tags, partition
+            ):
+                continue
             dist = self._distance(query, entry["state"], distance_bias)
-            if dist <= neighbor_radius * neighbor_radius:  # compare squared
+            if dist <= radius_sq:  # compare squared
                 results.append((idx, dist))
 
         results.sort(key=lambda x: x[1])
@@ -97,11 +99,11 @@ class VectorMemoryStore:
         skill_id: str = "",
     ) -> int:
         """
-        Add a new memory entry. Evicts lowest-Q entry if at capacity.
-        Returns index of the new entry.
+        Add a new memory entry if capacity remains.
+        Returns index of the new entry, or -1 when the store is full.
         """
-        if len(self._entries) >= self.MAX_ENTRIES:
-            self._evict_lowest_q()
+        if len(self._entries) >= self.max_entries:
+            return -1
 
         entry = {
             "state": array.array("f", state),
@@ -151,6 +153,9 @@ class VectorMemoryStore:
     def size(self) -> int:
         return len(self._entries)
 
+    def is_full(self) -> bool:
+        return len(self._entries) >= self.max_entries
+
     def stats(self) -> dict:
         """Summary stats for telemetry and debugging."""
         n = len(self._entries)
@@ -192,26 +197,24 @@ class VectorMemoryStore:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _filter(
+    def _matches_filters(
         self,
+        entry: dict,
         required_tags: list,
         excluded_tags: list,
         partition: str,
-    ) -> list:
-        """Return indices of entries passing Mσ filter."""
-        indices = []
-        for i, entry in enumerate(self._entries):
-            if partition and entry.get("skill_id") != partition:
-                continue
-            tags = entry.get("tags", [])
-            if required_tags:
-                if not all(t in tags for t in required_tags):
-                    continue
-            if excluded_tags:
-                if any(t in tags for t in excluded_tags):
-                    continue
-            indices.append(i)
-        return indices
+    ) -> bool:
+        """Return True if entry passes the Mσ filter."""
+        if partition and entry.get("skill_id") != partition:
+            return False
+        tags = entry.get("tags", [])
+        if required_tags:
+            if not all(t in tags for t in required_tags):
+                return False
+        if excluded_tags:
+            if any(t in tags for t in excluded_tags):
+                return False
+        return True
 
     @micropython.native
     def _distance(self, a, b, distance_bias=None) -> float:
@@ -237,15 +240,3 @@ class VectorMemoryStore:
                 w = distance_bias.get(str(i), 1.0)
                 dist += w * diff * diff
         return dist
-
-    def _evict_lowest_q(self):
-        """Remove the entry with the lowest Q-value to make room."""
-        if not self._entries:
-            return
-        min_idx = 0
-        min_q = self._entries[0]["q_value"]
-        for i, entry in enumerate(self._entries):
-            if entry["q_value"] < min_q:
-                min_q = entry["q_value"]
-                min_idx = i
-        self._entries.pop(min_idx)

@@ -32,7 +32,7 @@ DATA_DIR = os.path.join(EXPERIMENT_DIR, "data")
 sys.path.insert(0, HERE)
 
 DEFAULT_DEVICE_ID = "esp32-arm"
-DEFAULT_SKILL = "reach_target_fast"
+DEFAULT_SKILL = "reach-target-fast"
 DEFAULT_TARGET = 90.0
 
 
