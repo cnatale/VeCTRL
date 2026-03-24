@@ -1,7 +1,7 @@
 # Skills
 > **A Skill is a temporary redefinition of “good behavior” over the same underlying memory and control machinery.**
 
-VeCTRL Skills are a subset of [Agent Skills Open Specification](https://agentskills.io/specification)
+VeCTRL Skills are packaged using the [Agent Skills](https://agentskills.io/specification) directory format. Each skill is a directory containing a `SKILL.md` file (with `name` and `description` frontmatter conforming to the Agent Skills spec) and an `assets/config.json` file containing the VeCTRL-specific control configuration. The Agent Skills wrapper makes skills discoverable by any Agent Skills-compatible tool and readable by an LLM planner; the `assets/config.json` carries the VeCTRL σ-tuple that the edge device actually evaluates.
 
 
 ---
@@ -24,7 +24,8 @@ Consider VeCTRL Skill `σ` as a tuple:
   Wσ,        // distance or score shaping
   Rσ,        // reward / loss definition
   Uσ,        // update policy
-  Tσ         // termination / persistence rules
+  Tσ,        // termination / persistence rules
+  Dσ         // skill description, for planner/human readability
 ⟩
 ```
 

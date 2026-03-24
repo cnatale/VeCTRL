@@ -118,3 +118,52 @@ The long-term goal of VeCTRL is to explore architectures for agents that combine
 * language-model reasoning
 
 This combination could enable agents that can **learn continuously while remaining interpretable and controllable.**
+
+---
+
+# Code Quality Standards
+
+VeCTRL spans both **Python 3** code that runs on the coordinator and **MicroPython** code that runs on the ESP32 edge device. The quality bar should reflect both environments:
+
+## Supported Runtimes
+
+- Coordinator and analysis code should target a modern Python 3 runtime.
+- Edge-device code should remain compatible with the MicroPython build used on the ESP32.
+- Shared logic should be written against the overlap of Python 3 and MicroPython features whenever practical.
+
+## Linting And Formatting
+
+- All Python 3 code should pass `ruff check`.
+- All Python 3 code should use a consistent formatter, with `ruff format` as the default choice.
+- MicroPython code should also be linted with Ruff where possible, but contributors must avoid introducing imports or language features that are unavailable on the device.
+- New modules should keep functions small, names explicit, and side effects localized so that coordinator and edge logic remain easy to reason about.
+- Hardware constants, protocol fields, and servo limits should be defined once and referenced symbolically rather than duplicated inline.
+
+## Test Expectations
+
+- Python 3 coordinator, analysis, and shared-library code should have automated tests using `pytest`.
+- New features should include tests for the main success path plus the most important edge case or failure mode.
+- Bug fixes should include a regression test whenever the behavior can be reproduced in an automated test.
+- MicroPython modules should separate pure logic from hardware I/O so the logic can be tested on a host machine under `pytest`.
+- Hardware-facing MicroPython code should have a documented smoke-test procedure for real-device verification when full automation is not practical.
+
+## Coverage Thresholds
+
+- Python 3 coordinator and shared logic should maintain at least **90% line coverage** and **85% branch coverage**.
+- Testable MicroPython logic that runs under host-side tests should maintain at least **80% line coverage**.
+- Hardware adapter layers, direct servo control, and board-specific integration code are not expected to hit the same coverage threshold, but they should be exercised by documented smoke tests before merge.
+- Changes should not reduce coverage in the area they modify without a clear reason documented in the pull request.
+
+## Minimum Merge Bar
+
+- Linting passes for all changed Python files.
+- Relevant automated tests pass locally.
+- New behavior is covered by tests, or the lack of automation is justified for hardware-specific code.
+- README or architecture docs are updated when a change affects setup, protocols, telemetry, or skill configuration.
+
+## Practical Guidance For This Repo
+
+- Keep coordinator code, experiment analysis, and reusable utilities test-first where possible.
+- Keep ESP32 modules optimized for clarity and determinism: prefer simple data structures, explicit bounds, and predictable control-loop timing over clever abstractions.
+- Mock or fake network, filesystem, and device interfaces in host-side tests rather than coupling tests to live hardware.
+- Treat performance-sensitive edge code as production-critical even in experiments: changes that affect tick timing, memory growth, or servo safety should be validated on device.

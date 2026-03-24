@@ -1,6 +1,5 @@
 from machine import Pin, I2C
 import time
-import random
 
 # Freenove Smart Car Shield for RPi exposes a controller at 0x18 over I2C.
 I2C_ADDR = 0x18
@@ -34,7 +33,7 @@ def write_reg(cmd, value):
         time.sleep_ms(2)
 
 
-def set_servo_angle(angle, servo_number = 1):
+def set_servo_angle(angle, servo_number=1):
     pulse_us = angle_to_pulse_us(angle)
     print(f"Servo{servo_number} angle:", angle, "pulse_us:", pulse_us)
     write_reg(CMD_SERVO1 + servo_number - 1, pulse_us)
@@ -51,7 +50,9 @@ if I2C_ADDR not in devices:
 
 print("Found Freenove shield at 0x18")
 print("Note: Servo ports need the shield LOAD power path enabled.")
-print("Make sure the shield has external DC power and both CTRL and LOAD switches are ON.")
+print(
+    "Make sure the shield has external DC power and both CTRL and LOAD switches are ON."
+)
 
 print("Centering servo...")
 set_servo_angle(90)
