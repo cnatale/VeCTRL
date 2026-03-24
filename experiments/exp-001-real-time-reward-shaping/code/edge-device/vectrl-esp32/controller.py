@@ -190,6 +190,7 @@ class Controller:
         tick_ms = time.ticks_diff(time.ticks_ms(), tick_start)
         self._telemetry_tick_count += 1
         if self._telemetry_tick_count >= TELEMETRY_INTERVAL_TICKS:
+            # print(f"Sending telemetry data at {tick_ms}")
             self._telemetry_tick_count = 0
             self._write_state(
                 state,

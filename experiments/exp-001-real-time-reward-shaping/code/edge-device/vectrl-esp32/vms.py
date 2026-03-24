@@ -84,7 +84,15 @@ class VectorMemoryStore:
         return results[:k]
 
     def update_q(self, entry_idx: int, alpha: float, td_delta: float):
-        """Apply TD update to entry at entry_idx. Increments visit_count."""
+        """Apply TD update to entry at entry_idx. Increments visit_count.
+        alpha: "volume knob on learning," determines percentage of new info that should overwrite old info
+            • 0.1 means q_value is updated by only 10% of new error.
+            • 1.0 completely replaces old q_value with newest result.
+        td_delta: represents surprise. Difference between what hte agent thought would happen and what actually happened.
+            • positive td_delta: outcome was better than expected
+            • negative td_delta: outcome was worse than expected
+            • 0 td_delta: everything went exactly as planned; no learning is required
+        """
         entry = self._entries[entry_idx]
         entry["q_value"] += alpha * td_delta
         entry["visit_count"] += 1
@@ -202,7 +210,7 @@ class VectorMemoryStore:
         entry: dict,
         required_tags: list,
         excluded_tags: list,
-        partition: str,
+        partition: str,  # restricts matching to points assigned the current skill id only, if set
     ) -> bool:
         """Return True if entry passes the Mσ filter."""
         if partition and entry.get("skill_id") != partition:
@@ -240,3 +248,5 @@ class VectorMemoryStore:
                 w = distance_bias.get(str(i), 1.0)
                 dist += w * diff * diff
         return dist
+
+        # TODO: benchmark speed difference between non-native, native, and Viper implementations for distance calculation

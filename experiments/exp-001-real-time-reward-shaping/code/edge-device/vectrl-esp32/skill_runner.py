@@ -35,14 +35,14 @@ class SkillRunner:
             "target_threshold_deg": 3.0,
         },
         "learning": {
-            "alpha": 0.1,
-            "gamma": 0.9,
-            "epsilon": 0.2,
+            "alpha": 0.1,  # learning rate, 0 - 1
+            "gamma": 0.9,  # importance of future rewards, 0 - 1. Close to 1 makes agent "far-sighted," prioritizing long-term gains over immediate rewards
+            "epsilon": 0.2,  # exploration rate; % chance agent takes random action to explore environment vs picking best known action
             "neighbor_radius": 15.0,
-            "k": 5,
+            "k": 5,  # number of nearest neighbors when calculating density or making prediction
             "insertion_policy": "always",
-            "min_td_error_to_insert": None,
-            "min_visit_count_for_density_insert": None,
+            "min_td_error_to_insert": None,  # if set, agent only saves state if TD error is high. Simulates only remembering things that surprise the agent.
+            "min_visit_count_for_density_insert": None,  # if set, prevents adding new nodes to areas that are already "crowded" or well-mapped.
         },
         "termination": {
             "min_duration_ms": 0,
@@ -79,7 +79,6 @@ class SkillRunner:
     # ------------------------------------------------------------------
     # Rσ — Reward
     # ------------------------------------------------------------------
-
     def compute_reward(
         self,
         error: float,
@@ -100,8 +99,12 @@ class SkillRunner:
         prev_val = action_set[prev_action_idx]
 
         reward = r["error_penalty"] * abs(error)
-        reward += r["action_magnitude_penalty"] * abs(action_val)
-        reward += r["smoothness_penalty"] * abs(action_val - prev_val)
+        reward += r["action_magnitude_penalty"] * abs(
+            action_val
+        )  # agent penalized based on size or intensity of action it takes
+        reward += r["smoothness_penalty"] * abs(
+            action_val - prev_val
+        )  # agent penalized based on diff between last value and current one
         if abs(error) < r["target_threshold_deg"]:
             reward += r["target_bonus"]
 

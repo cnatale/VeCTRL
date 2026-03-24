@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 PORT="${1:-auto}"
 MPREMOTE="${MPREMOTE:-mpremote}"
 BOOT_DELAY_SECONDS="${BOOT_DELAY_SECONDS:-2}"

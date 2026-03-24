@@ -3,7 +3,7 @@ Coordinator entry point for Exp 001 — Real-time reward shaping.
 
 Usage:
     cd experiments/exp-001-real-time-reward-shaping/code/coordinator
-    python run.py --device esp32-arm --ip 192.168.1.101
+    python run.py --device esp32-arm --ip 192.168.1.101 (or the current edge device network ip address)
 
 The coordinator:
   1. Registers the edge device

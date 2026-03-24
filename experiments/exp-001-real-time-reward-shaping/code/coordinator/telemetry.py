@@ -115,11 +115,13 @@ class TelemetryLogger:
             "skill_elapsed_ms": packet.get("skill", {}).get("elapsed_ms", ""),
         }
         writer.writerow(row)
+        self._files[device_id].flush()
 
         for fn in self._callbacks:
             try:
                 fn(packet)
             except Exception:
+                print(f"TelemetryLogger._handle: error handling packet: {Exception}")
                 pass
 
     def _get_writer(self, device_id: str) -> csv.DictWriter:

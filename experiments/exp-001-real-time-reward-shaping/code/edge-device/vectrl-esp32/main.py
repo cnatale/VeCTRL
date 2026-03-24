@@ -14,25 +14,98 @@ from vms import VectorMemoryStore
 from skill_runner import SkillRunner
 from controller import ACTION_SET, Controller
 
-
 # ---------------------------------------------------------------------------
 # WiFi
 # ---------------------------------------------------------------------------
 
 
+WIFI_STATUS_NAMES = {
+    getattr(network, "STAT_IDLE", 1000): "IDLE",
+    getattr(network, "STAT_CONNECTING", 1001): "CONNECTING",
+    getattr(network, "STAT_WRONG_PASSWORD", -3): "WRONG_PASSWORD",
+    getattr(network, "STAT_NO_AP_FOUND", -2): "NO_AP_FOUND",
+    getattr(network, "STAT_CONNECT_FAIL", -1): "CONNECT_FAIL",
+    getattr(network, "STAT_GOT_IP", 1010): "GOT_IP",
+}
+
+WIFI_FAILURE_STATUSES = (
+    getattr(network, "STAT_WRONG_PASSWORD", -3),
+    getattr(network, "STAT_NO_AP_FOUND", -2),
+    getattr(network, "STAT_CONNECT_FAIL", -1),
+)
+
+
+def wifi_status_name(status):
+    return WIFI_STATUS_NAMES.get(status, "UNKNOWN(%s)" % status)
+
+
+def scan_for_target_ssid(wlan, target_ssid):
+    try:
+        networks = wlan.scan()
+    except Exception as exc:
+        print("WiFi scan failed:", exc)
+        return
+
+    print("Visible WiFi networks:", len(networks))
+    target_found = False
+    for entry in networks:
+        ssid_bytes, bssid, channel, rssi, authmode, hidden = entry
+        try:
+            name = ssid_bytes.decode("utf-8")
+        except Exception:
+            name = str(ssid_bytes)
+        if name == target_ssid:
+            target_found = True
+            print(
+                "Target SSID visible:",
+                name,
+                "channel=%s" % channel,
+                "rssi=%s" % rssi,
+                "authmode=%s" % authmode,
+                "hidden=%s" % hidden,
+                "bssid=%s" % "".join("%02x" % byte for byte in bssid),
+            )
+
+    if not target_found:
+        print("Target SSID not found in scan results:", target_ssid)
+
+
 def connect_wifi(ssid, password, timeout_s=20):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
-    if not wlan.isconnected():
-        print("Connecting to WiFi:", ssid)
-        wlan.connect(ssid, password)
-        deadline = time.time() + timeout_s
-        while not wlan.isconnected():
-            if time.time() > deadline:
-                raise RuntimeError("WiFi connection timed out")
-            time.sleep(0.5)
+    print("WiFi station active:", wlan.active())
+    print("Initial WiFi status:", wifi_status_name(wlan.status()))
+
+    if wlan.isconnected():
+        print("WiFi already connected:", wlan.ifconfig())
+        return wlan.ifconfig()[0]
+
+    try:
+        wlan.disconnect()
+    except Exception:
+        pass
+
+    scan_for_target_ssid(wlan, ssid)
+    print("Connecting to WiFi:", ssid)
+    wlan.connect(ssid, password)
+
+    deadline = time.time() + timeout_s
+    last_status = None
+    while not wlan.isconnected():
+        status = wlan.status()
+        if status != last_status:
+            print("WiFi status changed:", wifi_status_name(status))
+            last_status = status
+        if status in WIFI_FAILURE_STATUSES:
+            raise RuntimeError("WiFi connect failed: %s" % wifi_status_name(status))
+        if time.time() > deadline:
+            raise RuntimeError(
+                "WiFi connection timed out (last status: %s)" % wifi_status_name(status)
+            )
+        time.sleep(0.5)
+
     ip = wlan.ifconfig()[0]
-    print("WiFi connected — IP:", ip)
+    print("WiFi connected:", wlan.ifconfig())
     return ip
 
 
