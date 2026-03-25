@@ -34,8 +34,8 @@ class VectorMemoryStore:
             "skill_id":    str,           # for partition filtering (Exp 3+)
         }
 
-    MAX_ENTRIES is a hard cap. Once full, new inserts are skipped so the
-    controller stays on a fixed memory footprint.
+    MAX_ENTRIES is a hard cap. Once full, inserts evict the stalest entry so
+    the controller stays on a fixed memory footprint while continuing to adapt.
     """
 
     MAX_ENTRIES = 128
@@ -107,21 +107,17 @@ class VectorMemoryStore:
         skill_id: str = "",
     ) -> int:
         """
-        Add a new memory entry if capacity remains.
-        Returns index of the new entry, or -1 when the store is full.
+        Add a new memory entry.
+        Returns the inserted/replaced index.
         """
         if len(self._entries) >= self.max_entries:
-            return -1
+            replace_idx = self._select_eviction_index()
+            self._overwrite_entry(
+                self._entries[replace_idx], state, action_idx, q, tags, skill_id
+            )
+            return replace_idx
 
-        entry = {
-            "state": array.array("f", state),
-            "action_idx": action_idx,
-            "q_value": q,
-            "visit_count": 0,
-            "td_error": 0.0,
-            "tags": list(tags) if tags else [],
-            "skill_id": skill_id,
-        }
+        entry = self._make_entry(state, action_idx, q, tags, skill_id)
         self._entries.append(entry)
         return len(self._entries) - 1
 
@@ -223,6 +219,49 @@ class VectorMemoryStore:
             if any(t in tags for t in excluded_tags):
                 return False
         return True
+
+    def _make_entry(
+        self, state: list, action_idx: int, q: float, tags: list, skill_id: str
+    ) -> dict:
+        return {
+            "state": array.array("f", state),
+            "action_idx": action_idx,
+            "q_value": q,
+            "visit_count": 0,
+            "td_error": 0.0,
+            "tags": list(tags) if tags else [],
+            "skill_id": skill_id,
+        }
+
+    def _overwrite_entry(
+        self,
+        entry: dict,
+        state: list,
+        action_idx: int,
+        q: float,
+        tags: list,
+        skill_id: str,
+    ):
+        """Reuse an existing entry dict and array to avoid heap allocation."""
+        s = entry["state"]
+        for i in range(self.state_dim):
+            s[i] = state[i]
+        entry["action_idx"] = action_idx
+        entry["q_value"] = q
+        entry["visit_count"] = 0
+        entry["td_error"] = 0.0
+        entry["skill_id"] = skill_id
+
+    def _select_eviction_index(self) -> int:
+        """Evict the least-visited entry (stalest region of state space)."""
+        best_idx = 0
+        best_vc = self._entries[0]["visit_count"]
+        for idx in range(1, len(self._entries)):
+            vc = self._entries[idx]["visit_count"]
+            if vc < best_vc:
+                best_idx = idx
+                best_vc = vc
+        return best_idx
 
     @micropython.native
     def _distance(self, a, b, distance_bias=None) -> float:
