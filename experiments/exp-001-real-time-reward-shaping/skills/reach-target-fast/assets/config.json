@@ -25,8 +25,8 @@
     "epsilon": 0.2,
     "neighbor_radius": 15.0,
     "k": 5,
-    "insertion_policy": "always",
-    "min_td_error_to_insert": null,
+    "insertion_policy": "td_error_threshold",
+    "min_td_error_to_insert": 5.0,
     "min_visit_count_for_density_insert": null
   },
 

@@ -38,7 +38,7 @@ class VectorMemoryStore:
     the controller stays on a fixed memory footprint while continuing to adapt.
     """
 
-    MAX_ENTRIES = 128
+    MAX_ENTRIES = 256
 
     def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim
@@ -145,7 +145,9 @@ class VectorMemoryStore:
             self.insert(state, action_idx, q, tags, skill_id)
 
         elif policy == "td_error_threshold":
-            if min_td_error is not None and abs(td_error) > min_td_error:
+            if not self.is_full():
+                self.insert(state, action_idx, q, tags, skill_id)
+            elif min_td_error is not None and abs(td_error) > min_td_error:
                 self.insert(state, action_idx, q, tags, skill_id)
 
         elif policy == "visit_density":
