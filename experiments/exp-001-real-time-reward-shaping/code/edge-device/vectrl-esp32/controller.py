@@ -159,6 +159,12 @@ class Controller:
                     max_q_next = next_q
             td_error = reward + lp["gamma"] * max_q_next - q_value
             self.vms.update_q(credited_entry_idx, lp["alpha"], td_error)
+        elif credited_entry_idx < 0:
+            # No entry to TD-update (action was exploratory), but compute
+            # td_error relative to initial_q so maybe_insert has a non-zero
+            # signal — otherwise exploration results are silently dropped
+            # once memory is full and the td_error_threshold gate blocks 0.0.
+            td_error = reward - lp.get("initial_q", -45.0)
 
         # 8. Conditional memory insertion (Uσ insertion_policy)
         self._write_state(
@@ -169,10 +175,12 @@ class Controller:
             prev_prev_error,
         )
         ip = self.skill.get_insertion_policy()
+        initial_q = lp.get("initial_q", -45.0)
+        insert_q = reward if credited_entry_idx < 0 else initial_q
         self.vms.maybe_insert(
             state=state,
             action_idx=action_idx,
-            q=lp.get("initial_q", -45.0),
+            q=insert_q,
             td_error=td_error,
             policy=ip["policy"],
             min_td_error=ip["min_td_error"],
