@@ -29,6 +29,7 @@ class SkillRunner:
         "distance_bias": {},
         "reward": {
             "error_penalty": -1.0,
+            "error_scale": 90.0,
             "action_magnitude_penalty": 0.0,
             "smoothness_penalty": 0.0,
             "target_bonus": 5.0,
@@ -89,22 +90,30 @@ class SkillRunner:
         """
         Evaluate Rσ for the current transition.
 
-        r = error_penalty          * |error|
-          + action_magnitude_penalty * |action_value|
-          + smoothness_penalty     * |action_value - prev_action_value|
-          + target_bonus           if |error| < target_threshold_deg
+        Error term uses quadratic scaling when error_scale is set:
+          error_penalty * (error² / error_scale)
+        This gives steep gradient at large errors (strong push toward target)
+        and gentle gradient near zero (fine positioning).  Falls back to
+        linear |error| when error_scale is absent for backward compatibility.
+
+        Full formula:
+          r = error_term
+            + action_magnitude_penalty * |action_value|
+            + smoothness_penalty       * |action_value - prev_action_value|
+            + target_bonus             if |error| < target_threshold_deg
         """
         r = self._config["reward"]
         action_val = action_set[action_idx]
         prev_val = action_set[prev_action_idx]
 
-        reward = r["error_penalty"] * abs(error)
-        reward += r["action_magnitude_penalty"] * abs(
-            action_val
-        )  # agent penalized based on size or intensity of action it takes
-        reward += r["smoothness_penalty"] * abs(
-            action_val - prev_val
-        )  # agent penalized based on diff between last value and current one
+        error_scale = r.get("error_scale")
+        if error_scale:
+            reward = r["error_penalty"] * (error * error / error_scale)
+        else:
+            reward = r["error_penalty"] * abs(error)
+
+        reward += r["action_magnitude_penalty"] * abs(action_val)
+        reward += r["smoothness_penalty"] * abs(action_val - prev_val)
         if abs(error) < r["target_threshold_deg"]:
             reward += r["target_bonus"]
 

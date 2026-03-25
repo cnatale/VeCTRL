@@ -111,8 +111,8 @@ class Controller:
         )
 
         # 4. Epsilon-greedy action selection
-        action_idx, q_value, neighbor_agreement = self._select_action(
-            candidates, lp["epsilon"]
+        action_idx, q_value, neighbor_agreement, credited_entry_idx = (
+            self._select_action(candidates, lp["epsilon"])
         )
 
         # 5. Clamp and apply action → servo command
@@ -132,10 +132,9 @@ class Controller:
             error, action_idx, self._prev_action_idx, ACTION_SET
         )
 
-        # 7. TD update on the retrieved entry (if any)
+        # 7. TD update on the entry that recommended the action
         td_error = 0.0
-        if candidates:
-            best_entry_idx, _ = candidates[0]
+        if candidates and credited_entry_idx >= 0:
             next_error = self._target_angle - self._commanded_angle
             self._write_state(
                 state,
@@ -159,7 +158,7 @@ class Controller:
                 if next_q > max_q_next:
                     max_q_next = next_q
             td_error = reward + lp["gamma"] * max_q_next - q_value
-            self.vms.update_q(best_entry_idx, lp["alpha"], td_error)
+            self.vms.update_q(credited_entry_idx, lp["alpha"], td_error)
 
         # 8. Conditional memory insertion (Uσ insertion_policy)
         self._write_state(
@@ -231,15 +230,18 @@ class Controller:
         """
         Epsilon-greedy action selection over KNN candidates.
 
-        Returns (action_idx, q_value, neighbor_agreement).
+        Returns (action_idx, q_value, neighbor_agreement, best_entry_idx).
+        best_entry_idx is the VMS index of the entry that recommended the
+        chosen action (used for TD update credit assignment).
         Falls back to a random action if candidates is empty.
         """
         if not candidates or random.random() < epsilon:
             idx = random.randint(0, len(ACTION_SET) - 1)
-            return idx, 0.0, 0.0
+            return idx, 0.0, 0.0, -1
 
         best_q = -1e9
         best_action_idx = self._noop_action_idx  # default: no-op
+        best_entry_idx = candidates[0][0]
         action_votes = self._action_vote_counts
         for i in range(len(action_votes)):
             action_votes[i] = 0
@@ -252,9 +254,10 @@ class Controller:
             if q > best_q:
                 best_q = q
                 best_action_idx = a
+                best_entry_idx = entry_idx
 
         agreement = action_votes[best_action_idx] / len(candidates)
-        return best_action_idx, best_q, agreement
+        return best_action_idx, best_q, agreement, best_entry_idx
 
     def _send_telemetry(
         self,
