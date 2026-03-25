@@ -12,6 +12,7 @@
 
   "reward": {
     "error_penalty": -0.5,
+    "error_scale": 90.0,
     "action_magnitude_penalty": 0.0,
     "smoothness_penalty": -0.5,
     "target_bonus": 5.0,
