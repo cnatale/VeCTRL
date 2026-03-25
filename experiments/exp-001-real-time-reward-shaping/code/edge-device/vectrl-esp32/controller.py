@@ -172,7 +172,7 @@ class Controller:
         self.vms.maybe_insert(
             state=state,
             action_idx=action_idx,
-            q=q_value,
+            q=lp.get("initial_q", -45.0),
             td_error=td_error,
             policy=ip["policy"],
             min_td_error=ip["min_td_error"],

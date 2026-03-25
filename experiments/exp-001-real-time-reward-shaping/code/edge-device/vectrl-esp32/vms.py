@@ -38,7 +38,7 @@ class VectorMemoryStore:
     the controller stays on a fixed memory footprint while continuing to adapt.
     """
 
-    MAX_ENTRIES = 256
+    MAX_ENTRIES = 128
 
     def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim

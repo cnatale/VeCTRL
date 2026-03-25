@@ -41,6 +41,7 @@ class SkillRunner:
             "epsilon": 0.2,  # exploration rate; % chance agent takes random action to explore environment vs picking best known action
             "neighbor_radius": 15.0,
             "k": 5,  # number of nearest neighbors when calculating density or making prediction
+            "initial_q": -45.0,
             "insertion_policy": "td_error_threshold",
             "min_td_error_to_insert": 5.0,
             "min_visit_count_for_density_insert": None,  # if set, prevents adding new nodes to areas that are already "crowded" or well-mapped.

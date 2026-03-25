@@ -54,6 +54,7 @@ The edge device's `SkillRunner` deserializes and evaluates this schema each tick
     "epsilon": 0.2,
     "neighbor_radius": 15.0,
     "k": 5,
+    "initial_q": -45.0,
     "insertion_policy": "always",
     "min_td_error_to_insert": null,
     "min_visit_count_for_density_insert": null
@@ -149,6 +150,7 @@ RL hyperparameters. Can be varied per-skill from Exp 3 onward.
 | `epsilon` | float | Exploration rate for epsilon-greedy (0–1). |
 | `neighbor_radius` | float | Max L2 distance for a candidate to count as a neighbor. Tune to match state space scale. |
 | `k` | int | Number of nearest neighbors to retrieve. |
+| `initial_q` | float | Q-value assigned to newly inserted memory entries. Pessimistic values (e.g. -45.0) prevent untested entries from appearing better than entries with learned Q-values. |
 | `insertion_policy` | string | When to add new memory entries. See below. |
 | `min_td_error_to_insert` | float\|null | Threshold for `td_error_threshold` policy. |
 | `min_visit_count_for_density_insert` | int\|null | Threshold for `visit_density` policy. |
