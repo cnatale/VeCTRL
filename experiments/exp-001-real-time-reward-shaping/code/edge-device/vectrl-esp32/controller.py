@@ -134,6 +134,7 @@ class Controller:
         )
 
         # 4. Epsilon-greedy action selection
+        no_candidates = len(candidates) == 0
         action_idx, q_value, neighbor_agreement, credited_entry_idx, credited_dist = (
             self._select_action(candidates, lp["epsilon"])
         )
@@ -177,7 +178,7 @@ class Controller:
             )
             max_q_next = 0.0
             for entry_idx, _ in next_candidates:
-                next_q = self.vms._entries[entry_idx]["q_value"]
+                next_q = self.vms._q_values[entry_idx]
                 if next_q > max_q_next:
                     max_q_next = next_q
             td_error = reward + lp["gamma"] * max_q_next - q_value
@@ -193,6 +194,9 @@ class Controller:
         #    Skip if the action was clamped at a boundary — storing an
         #    entry for a physically impossible move creates a memory trap
         #    that the agent struggles to escape.
+        #    When KNN found zero candidates the agent is in an unexplored
+        #    region of state space — bypass td_error_threshold so any
+        #    experience can seed future retrievals.
         if not clamped:
             self._write_state(
                 state,
@@ -202,13 +206,14 @@ class Controller:
                 prev_prev_error,
             )
             ip = self.skill.get_insertion_policy()
+            effective_policy = "always" if no_candidates else ip["policy"]
             insert_q = reward
             self.vms.maybe_insert(
                 state=state,
                 action_idx=action_idx,
                 q=insert_q,
                 td_error=td_error,
-                policy=ip["policy"],
+                policy=effective_policy,
                 min_td_error=ip["min_td_error"],
                 min_visit_count=ip["min_visit_count"],
                 tags=self._empty_tags,
@@ -285,9 +290,8 @@ class Controller:
             action_votes[i] = 0
 
         for entry_idx, dist in candidates:
-            entry = self.vms._entries[entry_idx]
-            a = entry["action_idx"]
-            q = entry["q_value"]
+            a = self.vms._actions[entry_idx]
+            q = self.vms._q_values[entry_idx]
             action_votes[a] += 1
             if q > best_q:
                 best_q = q
@@ -339,9 +343,13 @@ class Controller:
             self.skill.elapsed_ms(),
         )
         if credited_entry_idx >= 0:
-            entry = self.vms._entries[credited_entry_idx]
             data = _TELEM_NN_FMT % (
-                base_args + (credited_entry_idx, entry["visit_count"], credited_dist)
+                base_args
+                + (
+                    credited_entry_idx,
+                    self.vms._visit_counts[credited_entry_idx],
+                    credited_dist,
+                )
             )
         else:
             data = _TELEM_FMT % base_args

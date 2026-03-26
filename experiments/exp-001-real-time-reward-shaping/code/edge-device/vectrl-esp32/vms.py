@@ -2,16 +2,15 @@
 Vector Memory Store (VMS) for VeCTRL edge device.
 
 Stores (state, action, q_value) entries and supports:
-  - KNN lookup with optional Mσ tag filtering and Wσ distance shaping
+  - KNN lookup with optional Wσ distance shaping
   - Q-value updates via TD learning
   - Conditional insertion policies (Exp 2+)
   - Persistence to/from JSON on the ESP32 filesystem
 
 Standard MicroPython — no external libraries required.
-State vectors are stored as array.array('f') for memory efficiency
-and faster element access vs. lists. _distance() uses
-@micropython.native for ~2x speedup over bytecode, and fast-paths
-the common case where distance_bias is empty.
+All entry data lives in pre-allocated parallel arrays so the heap
+footprint is fixed at init and no per-entry objects are created
+during the control loop.
 """
 
 import array
@@ -21,31 +20,43 @@ import micropython
 
 class VectorMemoryStore:
     """
-    Flat list-based vector memory store.
+    Pool-allocated vector memory store using parallel flat arrays.
 
-    Each entry is a dict:
-        {
-            "state":       array.array('f'),  # state vector at insertion time
-            "action_idx":  int,           # index into ACTION_SET
-            "q_value":     float,
-            "visit_count": int,
-            "td_error":    float,         # most recent TD error for this entry
-            "tags":        list[str],     # for Mσ filtering (Exp 3+)
-            "skill_id":    str,           # for partition filtering (Exp 3+)
-        }
+    Entry fields are spread across typed arrays indexed by slot number:
+        _states[idx*D .. idx*D+D-1]  — state vector (D = state_dim)
+        _actions[idx]                — action index (uint8)
+        _q_values[idx]               — Q-value (float32)
+        _visit_counts[idx]           — visit count (uint16)
+        _td_errors[idx]              — last TD error (float32)
+        _skill_ids[idx]              — skill id string (reference)
 
-    MAX_ENTRIES is a hard cap. Once full, inserts evict the stalest entry so
-    the controller stays on a fixed memory footprint while continuing to adapt.
+    MAX_ENTRIES is a hard cap. Once full, inserts evict the least-reachable
+    entry (the one most distant from recent KNN queries) so the controller
+    stays on a fixed memory footprint while continuing to adapt.
     """
 
     MAX_ENTRIES = 128
+    RECENT_QUERY_BUFFER_SIZE = 8
 
     def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim
         self.action_set = action_set
-        self.max_entries = max_entries if max_entries is not None else self.MAX_ENTRIES
-        self._entries = []
+        n = max_entries if max_entries is not None else self.MAX_ENTRIES
+        self.max_entries = n
+        d = state_dim
+
+        self._states = array.array("f", [0.0] * (n * d))
+        self._actions = array.array("B", [0] * n)
+        self._q_values = array.array("f", [0.0] * n)
+        self._visit_counts = array.array("H", [0] * n)
+        self._td_errors = array.array("f", [0.0] * n)
+        self._skill_ids = [""] * n
+
         self._size = 0
+
+        self._rq_buf = array.array("f", [0.0] * (self.RECENT_QUERY_BUFFER_SIZE * d))
+        self._rq_head = 0
+        self._rq_count = 0
 
     # ------------------------------------------------------------------
     # Core operations
@@ -64,23 +75,23 @@ class VectorMemoryStore:
         """
         Return up to k nearest entries within neighbor_radius.
 
-        Applies Mσ filtering before computing distances.
         Applies Wσ distance shaping (distance_bias) during L2 computation.
+        Partition filtering restricts matches to entries with the given
+        skill_id.  Tag filtering is not stored in the pool layout
+        (unused in Exp 1–3).
 
         Returns list of (entry_index, distance) sorted by ascending distance.
         Returns [] if no visible entries exist within radius.
         """
+        self._record_query(query)
         results = []
         radius_sq = neighbor_radius * neighbor_radius
-        entries = self._entries
+        skill_ids = self._skill_ids
         for idx in range(self._size):
-            entry = entries[idx]
-            if not self._matches_filters(
-                entry, required_tags, excluded_tags, partition
-            ):
+            if partition and skill_ids[idx] != partition:
                 continue
-            dist = self._distance(query, entry["state"], distance_bias)
-            if dist <= radius_sq:  # compare squared
+            dist = self._distance(query, idx, distance_bias)
+            if dist <= radius_sq:
                 results.append((idx, dist))
 
         results.sort(key=lambda x: x[1])
@@ -88,18 +99,15 @@ class VectorMemoryStore:
 
     def update_q(self, entry_idx: int, alpha: float, td_delta: float):
         """Apply TD update to entry at entry_idx. Increments visit_count.
-        alpha: "volume knob on learning," determines percentage of new info that should overwrite old info
-            • 0.1 means q_value is updated by only 10% of new error.
-            • 1.0 completely replaces old q_value with newest result.
-        td_delta: represents surprise. Difference between what hte agent thought would happen and what actually happened.
-            • positive td_delta: outcome was better than expected
-            • negative td_delta: outcome was worse than expected
-            • 0 td_delta: everything went exactly as planned; no learning is required
+
+        alpha: learning rate (0–1). Fraction of new information that
+            overwrites the old Q-value.
+        td_delta: surprise signal. Positive = better than expected,
+            negative = worse, zero = no learning needed.
         """
-        entry = self._entries[entry_idx]
-        entry["q_value"] += alpha * td_delta
-        entry["visit_count"] += 1
-        entry["td_error"] = td_delta
+        self._q_values[entry_idx] += alpha * td_delta
+        self._visit_counts[entry_idx] += 1
+        self._td_errors[entry_idx] = td_delta
 
     def insert(
         self,
@@ -111,23 +119,15 @@ class VectorMemoryStore:
     ) -> int:
         """
         Add a new memory entry.
-        Returns the inserted/replaced index.
+        Returns the inserted/replaced slot index.
         """
         if self._size >= self.max_entries:
             replace_idx = self._select_eviction_index()
-            self._overwrite_entry(
-                self._entries[replace_idx], state, action_idx, q, tags, skill_id
-            )
+            self._write_entry(replace_idx, state, action_idx, q, skill_id)
             return replace_idx
 
         idx = self._size
-        if idx < len(self._entries):
-            self._overwrite_entry(
-                self._entries[idx], state, action_idx, q, tags, skill_id
-            )
-        else:
-            entry = self._make_entry(state, action_idx, q, tags, skill_id)
-            self._entries.append(entry)
+        self._write_entry(idx, state, action_idx, q, skill_id)
         self._size += 1
         return idx
 
@@ -161,9 +161,6 @@ class VectorMemoryStore:
                 self.insert(state, action_idx, q, tags, skill_id)
 
         elif policy == "visit_density":
-            # Insert only if no neighbor has been visited more than
-            # min_visit_count times — keeps density low in well-explored regions.
-            # Implement in Exp 2 once baseline "always" is validated.
             pass
 
     def size(self) -> int:
@@ -173,12 +170,16 @@ class VectorMemoryStore:
         return self._size >= self.max_entries
 
     def reset(self):
-        """Logically clear all entries without freeing heap objects.
+        """Logically clear all entries.
 
-        The backing list and its dicts/arrays stay allocated so future
-        inserts reuse them via _overwrite_entry — no GC pressure.
+        The backing arrays stay allocated so future inserts reuse the
+        same memory — no GC pressure.  The query ring buffer is also
+        reset so stale queries from the previous skill don't influence
+        eviction decisions.
         """
         self._size = 0
+        self._rq_head = 0
+        self._rq_count = 0
 
     def stats(self) -> dict:
         """Summary stats for telemetry and debugging."""
@@ -187,9 +188,11 @@ class VectorMemoryStore:
             return {"size": 0, "mean_q": 0.0, "mean_visits": 0.0}
         q_sum = 0.0
         v_sum = 0
+        q_vals = self._q_values
+        v_cnts = self._visit_counts
         for i in range(n):
-            q_sum += self._entries[i]["q_value"]
-            v_sum += self._entries[i]["visit_count"]
+            q_sum += q_vals[i]
+            v_sum += v_cnts[i]
         return {
             "size": n,
             "mean_q": q_sum / n,
@@ -202,93 +205,131 @@ class VectorMemoryStore:
 
     def save(self, filename: str):
         """Serialize memory to JSON on the ESP32 filesystem."""
+        dim = self.state_dim
+        states = self._states
+        actions = self._actions
+        q_vals = self._q_values
+        v_cnts = self._visit_counts
+        td_errs = self._td_errors
+        s_ids = self._skill_ids
         serializable = []
         for i in range(self._size):
-            entry_copy = dict(self._entries[i])
-            entry_copy["state"] = list(self._entries[i]["state"])
-            serializable.append(entry_copy)
+            off = i * dim
+            serializable.append(
+                {
+                    "state": [states[off + j] for j in range(dim)],
+                    "action_idx": actions[i],
+                    "q_value": q_vals[i],
+                    "visit_count": v_cnts[i],
+                    "td_error": td_errs[i],
+                    "skill_id": s_ids[i],
+                }
+            )
         with open(filename, "w") as f:
             json.dump(serializable, f)
 
     def load(self, filename: str):
-        """Load memory from JSON. Replaces current entries."""
+        """Load memory from JSON. Writes into pre-allocated arrays."""
         with open(filename, "r") as f:
             entries = json.load(f)
-        for e in entries:
-            e["state"] = array.array("f", e["state"])
-        self._entries = entries
+        dim = self.state_dim
+        states = self._states
+        actions = self._actions
+        q_vals = self._q_values
+        v_cnts = self._visit_counts
+        td_errs = self._td_errors
+        s_ids = self._skill_ids
+        for i, e in enumerate(entries):
+            off = i * dim
+            st = e["state"]
+            for j in range(dim):
+                states[off + j] = st[j]
+            actions[i] = e["action_idx"]
+            q_vals[i] = e["q_value"]
+            v_cnts[i] = e.get("visit_count", 0)
+            td_errs[i] = e.get("td_error", 0.0)
+            s_ids[i] = e.get("skill_id", "")
         self._size = len(entries)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _matches_filters(
-        self,
-        entry: dict,
-        required_tags: list,
-        excluded_tags: list,
-        partition: str,  # restricts matching to points assigned the current skill id only, if set
-    ) -> bool:
-        """Return True if entry passes the Mσ filter."""
-        if partition and entry.get("skill_id") != partition:
-            return False
-        tags = entry.get("tags", [])
-        if required_tags:
-            if not all(t in tags for t in required_tags):
-                return False
-        if excluded_tags:
-            if any(t in tags for t in excluded_tags):
-                return False
-        return True
-
-    def _make_entry(
-        self, state: list, action_idx: int, q: float, tags: list, skill_id: str
-    ) -> dict:
-        return {
-            "state": array.array("f", state),
-            "action_idx": action_idx,
-            "q_value": q,
-            "visit_count": 0,
-            "td_error": 0.0,
-            "tags": list(tags) if tags else [],
-            "skill_id": skill_id,
-        }
-
-    def _overwrite_entry(
-        self,
-        entry: dict,
-        state: list,
-        action_idx: int,
-        q: float,
-        tags: list,
-        skill_id: str,
+    def _write_entry(
+        self, idx: int, state: list, action_idx: int, q: float, skill_id: str
     ):
-        """Reuse an existing entry dict and array to avoid heap allocation."""
-        s = entry["state"]
-        for i in range(self.state_dim):
-            s[i] = state[i]
-        entry["action_idx"] = action_idx
-        entry["q_value"] = q
-        entry["visit_count"] = 0
-        entry["td_error"] = 0.0
-        entry["skill_id"] = skill_id
+        """Write entry data into pre-allocated array slots (zero allocation)."""
+        dim = self.state_dim
+        off = idx * dim
+        states = self._states
+        for i in range(dim):
+            states[off + i] = state[i]
+        self._actions[idx] = action_idx
+        self._q_values[idx] = q
+        self._visit_counts[idx] = 0
+        self._td_errors[idx] = 0.0
+        self._skill_ids[idx] = skill_id
 
-    def _select_eviction_index(self) -> int:
-        """Evict the least-visited entry (stalest region of state space)."""
-        best_idx = 0
-        best_vc = self._entries[0]["visit_count"]
-        for idx in range(1, self._size):
-            vc = self._entries[idx]["visit_count"]
-            if vc < best_vc:
-                best_idx = idx
-                best_vc = vc
-        return best_idx
+    def _record_query(self, query):
+        """Write query into the flat ring buffer (zero allocation)."""
+        dim = self.state_dim
+        off = self._rq_head * dim
+        buf = self._rq_buf
+        for i in range(dim):
+            buf[off + i] = query[i]
+        self._rq_head = (self._rq_head + 1) % self.RECENT_QUERY_BUFFER_SIZE
+        if self._rq_count < self.RECENT_QUERY_BUFFER_SIZE:
+            self._rq_count += 1
 
     @micropython.native
-    def _distance(self, a, b, distance_bias=None) -> float:
+    def _select_eviction_index(self) -> int:
+        """Evict the entry least reachable from recent KNN queries.
+
+        For each entry, compute its minimum squared-L2 distance to any
+        query in the ring buffer.  The entry with the largest such minimum
+        is the one furthest from the agent's current operating region and
+        gets evicted.  Falls back to least-visited when no queries have
+        been recorded yet (cold start).
         """
-        Squared L2 distance with optional per-dimension Wσ bias.
+        rq_count = self._rq_count
+        if rq_count == 0:
+            best_idx = 0
+            best_vc = self._visit_counts[0]
+            for idx in range(1, self._size):
+                vc = self._visit_counts[idx]
+                if vc < best_vc:
+                    best_idx = idx
+                    best_vc = vc
+            return best_idx
+
+        dim = self.state_dim
+        states = self._states
+        rq_buf = self._rq_buf
+        size = self._size
+        worst_idx = 0
+        worst_min_dist = -1.0
+
+        for idx in range(size):
+            s_off = idx * dim
+            min_dist = 1e18
+            for qi in range(rq_count):
+                q_off = qi * dim
+                d = 0.0
+                for di in range(dim):
+                    diff = states[s_off + di] - rq_buf[q_off + di]
+                    d += diff * diff
+                if d < min_dist:
+                    min_dist = d
+            if min_dist > worst_min_dist:
+                worst_min_dist = min_dist
+                worst_idx = idx
+
+        return worst_idx
+
+    @micropython.native
+    def _distance(self, query, entry_idx, distance_bias=None) -> float:
+        """
+        Squared L2 distance between query vector and stored entry.
 
         Fast path (no distance_bias) avoids a dict lookup per dimension.
         This path is always taken in Exp 1–3 where distance_bias is {}.
@@ -299,15 +340,15 @@ class VectorMemoryStore:
         """
         dist = 0.0
         dim = self.state_dim
+        off = entry_idx * dim
+        states = self._states
         if not distance_bias:
             for i in range(dim):
-                diff = a[i] - b[i]
+                diff = query[i] - states[off + i]
                 dist += diff * diff
         else:
             for i in range(dim):
-                diff = a[i] - b[i]
+                diff = query[i] - states[off + i]
                 w = distance_bias.get(str(i), 1.0)
                 dist += w * diff * diff
         return dist
-
-        # TODO: benchmark speed difference between non-native, native, and Viper implementations for distance calculation
