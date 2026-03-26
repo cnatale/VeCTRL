@@ -111,7 +111,7 @@ class Controller:
         )
 
         # 4. Epsilon-greedy action selection
-        action_idx, q_value, neighbor_agreement, credited_entry_idx = (
+        action_idx, q_value, neighbor_agreement, credited_entry_idx, credited_dist = (
             self._select_action(candidates, lp["epsilon"])
         )
 
@@ -215,6 +215,8 @@ class Controller:
                 len(candidates),
                 neighbor_agreement,
                 tick_ms,
+                credited_entry_idx,
+                credited_dist,
             )
         else:
             self._maybe_log_status(tick_ms)
@@ -238,23 +240,25 @@ class Controller:
         """
         Epsilon-greedy action selection over KNN candidates.
 
-        Returns (action_idx, q_value, neighbor_agreement, best_entry_idx).
+        Returns (action_idx, q_value, neighbor_agreement, best_entry_idx, best_dist).
         best_entry_idx is the VMS index of the entry that recommended the
         chosen action (used for TD update credit assignment).
+        best_dist is the squared L2 distance from the query to that entry.
         Falls back to a random action if candidates is empty.
         """
         if not candidates or random.random() < epsilon:
             idx = random.randint(0, len(ACTION_SET) - 1)
-            return idx, 0.0, 0.0, -1
+            return idx, 0.0, 0.0, -1, -1.0
 
         best_q = -1e9
         best_action_idx = self._noop_action_idx  # default: no-op
         best_entry_idx = candidates[0][0]
+        best_dist = candidates[0][1]
         action_votes = self._action_vote_counts
         for i in range(len(action_votes)):
             action_votes[i] = 0
 
-        for entry_idx, _ in candidates:
+        for entry_idx, dist in candidates:
             entry = self.vms._entries[entry_idx]
             a = entry["action_idx"]
             q = entry["q_value"]
@@ -263,9 +267,10 @@ class Controller:
                 best_q = q
                 best_action_idx = a
                 best_entry_idx = entry_idx
+                best_dist = dist
 
         agreement = action_votes[best_action_idx] / len(candidates)
-        return best_action_idx, best_q, agreement, best_entry_idx
+        return best_action_idx, best_q, agreement, best_entry_idx, best_dist
 
     def _send_telemetry(
         self,
@@ -277,6 +282,8 @@ class Controller:
         retrieval_k,
         neighbor_agreement,
         tick_ms,
+        credited_entry_idx,
+        credited_dist,
     ):
         """Package and send telemetry packet to coordinator."""
         packet = {
@@ -310,6 +317,13 @@ class Controller:
                 "elapsed_ms": self.skill.elapsed_ms(),
             },
         }
+        if credited_entry_idx >= 0:
+            entry = self.vms._entries[credited_entry_idx]
+            packet["credited_neighbor"] = {
+                "idx": credited_entry_idx,
+                "visit_count": entry["visit_count"],
+                "distance": credited_dist,
+            }
         self.comm.send_telemetry(packet)
 
     def _check_for_command(self):

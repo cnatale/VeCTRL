@@ -32,6 +32,9 @@ CSV_COLUMNS = [
     "neighbor_agreement",
     "tick_duration_ms",
     "skill_elapsed_ms",
+    "nn_idx",
+    "nn_visit_count",
+    "nn_distance",
 ]
 
 
@@ -92,6 +95,7 @@ class TelemetryLogger:
         device_id = packet.get("device_id", "unknown")
         writer = self._get_writer(device_id)
 
+        nn = packet.get("credited_neighbor", {})
         row = {
             "ts": packet.get("ts", ""),
             "device_id": device_id,
@@ -113,6 +117,9 @@ class TelemetryLogger:
             ),
             "tick_duration_ms": packet.get("memory", {}).get("tick_duration_ms", ""),
             "skill_elapsed_ms": packet.get("skill", {}).get("elapsed_ms", ""),
+            "nn_idx": nn.get("idx", ""),
+            "nn_visit_count": nn.get("visit_count", ""),
+            "nn_distance": nn.get("distance", ""),
         }
         writer.writerow(row)
         self._files[device_id].flush()
