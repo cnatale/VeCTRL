@@ -121,9 +121,9 @@ class Controller:
         prev_target_angle = state[1]
         prev_error = state[2]
         prev_prev_error = state[3]
-        self._commanded_angle = max(
-            ANGLE_MIN, min(ANGLE_MAX, self._commanded_angle + delta)
-        )
+        unclamped = self._commanded_angle + delta
+        self._commanded_angle = max(ANGLE_MIN, min(ANGLE_MAX, unclamped))
+        clamped = unclamped != self._commanded_angle
         self.servo(self._commanded_angle)
 
         # 6. Compute reward (Rσ)
@@ -166,28 +166,32 @@ class Controller:
             # once memory is full and the td_error_threshold gate blocks 0.0.
             td_error = reward - lp.get("initial_q", -45.0)
 
-        # 8. Conditional memory insertion (Uσ insertion_policy)
-        self._write_state(
-            state,
-            prev_commanded_angle,
-            prev_target_angle,
-            prev_error,
-            prev_prev_error,
-        )
-        ip = self.skill.get_insertion_policy()
-        initial_q = lp.get("initial_q", -45.0)
-        insert_q = reward if credited_entry_idx < 0 else initial_q
-        self.vms.maybe_insert(
-            state=state,
-            action_idx=action_idx,
-            q=insert_q,
-            td_error=td_error,
-            policy=ip["policy"],
-            min_td_error=ip["min_td_error"],
-            min_visit_count=ip["min_visit_count"],
-            tags=self._empty_tags,
-            skill_id=self.skill.skill_id,
-        )
+        # 8. Conditional memory insertion (Uσ insertion_policy).
+        #    Skip if the action was clamped at a boundary — storing an
+        #    entry for a physically impossible move creates a memory trap
+        #    that the agent struggles to escape.
+        if not clamped:
+            self._write_state(
+                state,
+                prev_commanded_angle,
+                prev_target_angle,
+                prev_error,
+                prev_prev_error,
+            )
+            ip = self.skill.get_insertion_policy()
+            initial_q = lp.get("initial_q", -45.0)
+            insert_q = reward if credited_entry_idx < 0 else initial_q
+            self.vms.maybe_insert(
+                state=state,
+                action_idx=action_idx,
+                q=insert_q,
+                td_error=td_error,
+                policy=ip["policy"],
+                min_td_error=ip["min_td_error"],
+                min_visit_count=ip["min_visit_count"],
+                tags=self._empty_tags,
+                skill_id=self.skill.skill_id,
+            )
 
         # 9. Check Tσ termination
         if self.skill.should_terminate(state):
