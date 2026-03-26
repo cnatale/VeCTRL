@@ -31,6 +31,28 @@ TICK_MS = 1000 // TARGET_HZ  # 50 ms
 DEBUG_LOG_INTERVAL_MS = 5000
 TELEMETRY_INTERVAL_TICKS = 10
 
+# Pre-built JSON templates for telemetry.  Using %-formatting instead of
+# dict + json.dumps eliminates 7 intermediate dict allocations per send
+# and avoids the json module's recursive serialisation overhead.
+_TELEM_FMT = (
+    '{"type":"telemetry","device_id":"%s","skill_id":"%s","ts":%d,'
+    '"state":{"commanded_angle":%s,"target_angle":%s,"error":%s,"prev_error":%s},'
+    '"action":{"idx":%d,"value":%d},'
+    '"learning":{"reward":%s,"q_value":%s,"td_error":%s,"epsilon":%s},'
+    '"memory":{"size":%d,"retrieval_k":%d,"neighbor_agreement":%s,"tick_duration_ms":%d},'
+    '"skill":{"elapsed_ms":%d}}'
+)
+
+_TELEM_NN_FMT = (
+    '{"type":"telemetry","device_id":"%s","skill_id":"%s","ts":%d,'
+    '"state":{"commanded_angle":%s,"target_angle":%s,"error":%s,"prev_error":%s},'
+    '"action":{"idx":%d,"value":%d},'
+    '"learning":{"reward":%s,"q_value":%s,"td_error":%s,"epsilon":%s},'
+    '"memory":{"size":%d,"retrieval_k":%d,"neighbor_agreement":%s,"tick_duration_ms":%d},'
+    '"skill":{"elapsed_ms":%d},'
+    '"credited_neighbor":{"idx":%d,"visit_count":%d,"distance":%s}}'
+)
+
 
 class Controller:
     def __init__(self, vms, skill_runner, servo, comm):
@@ -289,46 +311,41 @@ class Controller:
         credited_entry_idx,
         credited_dist,
     ):
-        """Package and send telemetry packet to coordinator."""
-        packet = {
-            "type": "telemetry",
-            "device_id": self.comm.device_id,
-            "skill_id": self.skill.skill_id,
-            "ts": time.ticks_ms(),
-            "state": {
-                "commanded_angle": state[0],
-                "target_angle": state[1],
-                "error": state[2],
-                "prev_error": state[3],
-            },
-            "action": {
-                "idx": action_idx,
-                "value": ACTION_SET[action_idx],
-            },
-            "learning": {
-                "reward": reward,
-                "q_value": q_value,
-                "td_error": td_error,
-                "epsilon": self.skill.get_learning_params()["epsilon"],
-            },
-            "memory": {
-                "size": self.vms.size(),
-                "retrieval_k": retrieval_k,
-                "neighbor_agreement": neighbor_agreement,
-                "tick_duration_ms": tick_ms,
-            },
-            "skill": {
-                "elapsed_ms": self.skill.elapsed_ms(),
-            },
-        }
+        """Format and send telemetry as a pre-built JSON string.
+
+        Uses %-formatting into _TELEM_FMT / _TELEM_NN_FMT instead of
+        building 7 nested dicts and calling json.dumps.  Peak heap cost
+        drops from ~1.2 KB (dicts + json string) to ~0.5 KB (one string
+        + one tuple).
+        """
+        base_args = (
+            self.comm.device_id,
+            self.skill.skill_id,
+            time.ticks_ms(),
+            state[0],
+            state[1],
+            state[2],
+            state[3],
+            action_idx,
+            ACTION_SET[action_idx],
+            reward,
+            q_value,
+            td_error,
+            self.skill.get_learning_params()["epsilon"],
+            self.vms.size(),
+            retrieval_k,
+            neighbor_agreement,
+            tick_ms,
+            self.skill.elapsed_ms(),
+        )
         if credited_entry_idx >= 0:
             entry = self.vms._entries[credited_entry_idx]
-            packet["credited_neighbor"] = {
-                "idx": credited_entry_idx,
-                "visit_count": entry["visit_count"],
-                "distance": credited_dist,
-            }
-        self.comm.send_telemetry(packet)
+            data = _TELEM_NN_FMT % (
+                base_args + (credited_entry_idx, entry["visit_count"], credited_dist)
+            )
+        else:
+            data = _TELEM_FMT % base_args
+        self.comm.send_telemetry_raw(data)
 
     def _check_for_command(self):
         """Non-blocking check for incoming coordinator messages."""

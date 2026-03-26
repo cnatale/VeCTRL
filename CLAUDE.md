@@ -153,7 +153,7 @@ The shield requires **both CTRL and LOAD power switches** to be ON, and needs ex
 
 ## Edge Device Language
 
-**Standard MicroPython** for Exp 1–6 — no custom firmware or external libraries required. Flash the official ESP32 build from micropython.org. State vectors use `array.array('f')` from the standard library; the KNN distance loop uses `@micropython.native` for ~2x speedup. Keep `VectorMemoryStore.MAX_ENTRIES = 200` for comfortable 20 Hz headroom.
+**Standard MicroPython** for Exp 1–6 — no custom firmware or external libraries required. Flash the official ESP32 build from micropython.org. State vectors use `array.array('f')` from the standard library; the KNN distance loop uses `@micropython.native` for ~2x speedup. Keep `VectorMemoryStore.MAX_ENTRIES = 128` as the minimum for this experiment. Telemetry uses `%`-formatted JSON strings (not dict + `json.dumps`) to stay within the ESP32's heap budget at this capacity.
 
 **Switch to Arduino/PlatformIO** if `tick_duration_ms` in telemetry shows GC pause spikes (values > 30ms that don't resolve). The skill config schema and all coordinator code remain unchanged. See `docs/architecture/edge-device-setup.md`.
 

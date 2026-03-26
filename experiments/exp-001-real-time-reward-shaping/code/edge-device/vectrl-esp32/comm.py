@@ -44,6 +44,21 @@ class Comm:
             self._telemetry_send_errors += 1
             self._last_telemetry_error = repr(e)
 
+    def send_telemetry_raw(self, data):
+        """Send a pre-formatted telemetry string to the coordinator.
+
+        Bypasses dict creation and json.dumps — only allocates the
+        encoded bytes object, reducing heap pressure on the ESP32.
+        """
+        try:
+            self._send_sock.sendto(
+                data.encode(), (self._coordinator_ip, self._telemetry_port)
+            )
+            self._telemetry_sent += 1
+        except Exception as e:
+            self._telemetry_send_errors += 1
+            self._last_telemetry_error = repr(e)
+
     def recv_command(self):
         """
         Non-blocking receive of a command packet from the coordinator.
@@ -51,7 +66,10 @@ class Comm:
         """
         try:
             data, _ = self._recv_sock.recvfrom(2048)
-        except OSError:
+        except OSError as e:
+            if e.args and e.args[0] == 12:  # ENOMEM
+                self._command_receive_errors += 1
+                self._last_command_error = "ENOMEM on recvfrom"
             return None
 
         try:
