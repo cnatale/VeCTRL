@@ -27,7 +27,7 @@
     "k": 5,
     "initial_q": -45.0,
     "insertion_policy": "td_error_threshold",
-    "min_td_error_to_insert": null,
+    "min_td_error_to_insert": 5.0,
     "min_visit_count_for_density_insert": null
   },
 

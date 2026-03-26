@@ -15,6 +15,7 @@ remaining budget. If a tick exceeds the budget, it runs immediately on
 the next iteration — no accumulation.
 """
 
+import gc
 import time
 import random
 
@@ -179,8 +180,7 @@ class Controller:
                 prev_prev_error,
             )
             ip = self.skill.get_insertion_policy()
-            initial_q = lp.get("initial_q", -45.0)
-            insert_q = reward if credited_entry_idx < 0 else initial_q
+            insert_q = reward
             self.vms.maybe_insert(
                 state=state,
                 action_idx=action_idx,
@@ -201,8 +201,8 @@ class Controller:
         tick_ms = time.ticks_diff(time.ticks_ms(), tick_start)
         self._telemetry_tick_count += 1
         if self._telemetry_tick_count >= TELEMETRY_INTERVAL_TICKS:
-            # print(f"Sending telemetry data at {tick_ms}")
             self._telemetry_tick_count = 0
+            gc.collect()
             self._write_state(
                 state,
                 self._commanded_angle,

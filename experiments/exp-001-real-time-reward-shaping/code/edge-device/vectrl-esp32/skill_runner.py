@@ -57,6 +57,7 @@ class SkillRunner:
     def __init__(self):
         self._config = dict(self.DEFAULT_CONFIG)
         self._loaded_at_ms = time.ticks_ms()
+        self._insertion_policy_cache = self._build_insertion_policy()
 
     def load(self, config: dict):
         """
@@ -76,6 +77,7 @@ class SkillRunner:
                 raise ValueError("Skill config missing key: " + key)
         self._config = config
         self._loaded_at_ms = time.ticks_ms()
+        self._insertion_policy_cache = self._build_insertion_policy()
         print("SkillRunner: loaded skill:", config["skill_id"])
 
     # ------------------------------------------------------------------
@@ -145,7 +147,10 @@ class SkillRunner:
         return self._config["learning"]
 
     def get_insertion_policy(self) -> dict:
-        """Return insertion_policy and thresholds for VMS.maybe_insert()."""
+        """Return cached insertion_policy and thresholds for VMS.maybe_insert()."""
+        return self._insertion_policy_cache
+
+    def _build_insertion_policy(self) -> dict:
         learning = self._config["learning"]
         return {
             "policy": learning["insertion_policy"],
