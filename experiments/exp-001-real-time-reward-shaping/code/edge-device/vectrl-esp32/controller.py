@@ -338,7 +338,11 @@ class Controller:
         msg_type = msg.get("type")
         if msg_type == "skill_config":
             try:
+                prev_skill = self.skill.skill_id
                 self.skill.load(msg["payload"])
+                if self.skill.skill_id != prev_skill:
+                    self.vms.reset()
+                    print("Controller: VMS reset for new skill", self.skill.skill_id)
             except ValueError as e:
                 print("Controller: rejected invalid skill config:", e)
         elif msg_type == "target":

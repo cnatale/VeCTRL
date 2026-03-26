@@ -45,6 +45,7 @@ class VectorMemoryStore:
         self.action_set = action_set
         self.max_entries = max_entries if max_entries is not None else self.MAX_ENTRIES
         self._entries = []
+        self._size = 0
 
     # ------------------------------------------------------------------
     # Core operations
@@ -71,7 +72,9 @@ class VectorMemoryStore:
         """
         results = []
         radius_sq = neighbor_radius * neighbor_radius
-        for idx, entry in enumerate(self._entries):
+        entries = self._entries
+        for idx in range(self._size):
+            entry = entries[idx]
             if not self._matches_filters(
                 entry, required_tags, excluded_tags, partition
             ):
@@ -110,16 +113,23 @@ class VectorMemoryStore:
         Add a new memory entry.
         Returns the inserted/replaced index.
         """
-        if len(self._entries) >= self.max_entries:
+        if self._size >= self.max_entries:
             replace_idx = self._select_eviction_index()
             self._overwrite_entry(
                 self._entries[replace_idx], state, action_idx, q, tags, skill_id
             )
             return replace_idx
 
-        entry = self._make_entry(state, action_idx, q, tags, skill_id)
-        self._entries.append(entry)
-        return len(self._entries) - 1
+        idx = self._size
+        if idx < len(self._entries):
+            self._overwrite_entry(
+                self._entries[idx], state, action_idx, q, tags, skill_id
+            )
+        else:
+            entry = self._make_entry(state, action_idx, q, tags, skill_id)
+            self._entries.append(entry)
+        self._size += 1
+        return idx
 
     def maybe_insert(
         self,
@@ -157,18 +167,29 @@ class VectorMemoryStore:
             pass
 
     def size(self) -> int:
-        return len(self._entries)
+        return self._size
 
     def is_full(self) -> bool:
-        return len(self._entries) >= self.max_entries
+        return self._size >= self.max_entries
+
+    def reset(self):
+        """Logically clear all entries without freeing heap objects.
+
+        The backing list and its dicts/arrays stay allocated so future
+        inserts reuse them via _overwrite_entry — no GC pressure.
+        """
+        self._size = 0
 
     def stats(self) -> dict:
         """Summary stats for telemetry and debugging."""
-        n = len(self._entries)
+        n = self._size
         if n == 0:
             return {"size": 0, "mean_q": 0.0, "mean_visits": 0.0}
-        q_sum = sum(e["q_value"] for e in self._entries)
-        v_sum = sum(e["visit_count"] for e in self._entries)
+        q_sum = 0.0
+        v_sum = 0
+        for i in range(n):
+            q_sum += self._entries[i]["q_value"]
+            v_sum += self._entries[i]["visit_count"]
         return {
             "size": n,
             "mean_q": q_sum / n,
@@ -181,11 +202,10 @@ class VectorMemoryStore:
 
     def save(self, filename: str):
         """Serialize memory to JSON on the ESP32 filesystem."""
-        # array.array is not JSON-serializable; convert state to list first
         serializable = []
-        for e in self._entries:
-            entry_copy = dict(e)
-            entry_copy["state"] = list(e["state"])
+        for i in range(self._size):
+            entry_copy = dict(self._entries[i])
+            entry_copy["state"] = list(self._entries[i]["state"])
             serializable.append(entry_copy)
         with open(filename, "w") as f:
             json.dump(serializable, f)
@@ -194,10 +214,10 @@ class VectorMemoryStore:
         """Load memory from JSON. Replaces current entries."""
         with open(filename, "r") as f:
             entries = json.load(f)
-        # Restore state vectors as array.array for consistent memory layout
         for e in entries:
             e["state"] = array.array("f", e["state"])
         self._entries = entries
+        self._size = len(entries)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -258,7 +278,7 @@ class VectorMemoryStore:
         """Evict the least-visited entry (stalest region of state space)."""
         best_idx = 0
         best_vc = self._entries[0]["visit_count"]
-        for idx in range(1, len(self._entries)):
+        for idx in range(1, self._size):
             vc = self._entries[idx]["visit_count"]
             if vc < best_vc:
                 best_idx = idx
