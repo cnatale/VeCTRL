@@ -1,6 +1,6 @@
 {
   "skill_id": "reach-target-smoothly",
-  "description": "Move servo to target with smooth, continuous motion. Penalizes abrupt action changes. Slightly higher gamma to value smooth long-horizon trajectories.",
+  "description": "Move servo to target with smooth, gradual motion. Penalizes large action magnitudes to encourage small steps. Slightly higher gamma to value smooth long-horizon trajectories.",
 
   "memory_filter": {
     "required_tags": [],
@@ -11,10 +11,10 @@
   "distance_bias": {},
 
   "reward": {
-    "error_penalty": -0.5,
+    "error_penalty": -0.7,
     "error_scale": 90.0,
-    "action_magnitude_penalty": 0.0,
-    "smoothness_penalty": -0.5,
+    "action_magnitude_penalty": -0.3,
+    "smoothness_penalty": 0.0,
     "target_bonus": 5.0,
     "target_threshold_deg": 3.0
   },
