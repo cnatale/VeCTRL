@@ -153,20 +153,15 @@ class Controller:
         if candidates and credited_entry_idx >= 0:
             next_error = self._target_angle - self._commanded_angle
             self._write_state(state, next_error, self._prev_error)
-            next_candidates = self.vms.knn_search(
-                state,
-                lp["k"],
-                lp["neighbor_radius"],
-                mf["required_tags"],
-                mf["excluded_tags"],
-                mf["partition"],
-                db,
-            )
+            # Rescore the k candidates from action-selection against the
+            # next-state query — O(k) instead of a second O(n) KNN scan.
+            radius_sq = lp["neighbor_radius"] * lp["neighbor_radius"]
             max_q_next = 0.0
-            for entry_idx, _ in next_candidates:
-                next_q = self.vms._q_values[entry_idx]
-                if next_q > max_q_next:
-                    max_q_next = next_q
+            for entry_idx, _ in candidates:
+                if self.vms._distance(state, entry_idx, db) <= radius_sq:
+                    next_q = self.vms._q_values[entry_idx]
+                    if next_q > max_q_next:
+                        max_q_next = next_q
             td_error = reward + lp["gamma"] * max_q_next - q_value
             self.vms.update_q(credited_entry_idx, lp["alpha"], td_error)
         elif credited_entry_idx < 0:
