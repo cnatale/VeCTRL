@@ -34,6 +34,10 @@ class SkillRunner:
             "smoothness_penalty": 0.0,
             "target_bonus": 5.0,
             "target_threshold_deg": 3.0,
+            # Optional override. Default = 5 × target_threshold_deg — if |error|
+            # is above this and KNN greedily picks no-op, force a non-noop explore
+            # step to break deadlocked neighbor consensus far from the target.
+            "noop_escape_error_deg": None,
         },
         "learning": {
             "alpha": 0.1,  # learning rate, 0 - 1
@@ -137,6 +141,14 @@ class SkillRunner:
     def get_distance_bias(self) -> dict:
         """Return Wσ distance bias dict for VMS.knn_search()."""
         return self._config.get("distance_bias", {})
+
+    def noop_escape_error_deg(self) -> float:
+        """|error| above which greedy KNN may not choose no-op (controller escape)."""
+        r = self._config["reward"]
+        override = r.get("noop_escape_error_deg")
+        if override is not None:
+            return float(override)
+        return float(r.get("target_threshold_deg", 3.0)) * 5.0
 
     # ------------------------------------------------------------------
     # Uσ — Learning hyperparameters

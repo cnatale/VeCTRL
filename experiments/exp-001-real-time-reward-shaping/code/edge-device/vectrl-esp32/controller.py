@@ -130,7 +130,7 @@ class Controller:
         # 4. Epsilon-greedy action selection
         no_candidates = n_candidates == 0
         action_idx, q_value, neighbor_agreement, credited_entry_idx, credited_dist = (
-            self._select_action(n_candidates, lp["epsilon"])
+            self._select_action(n_candidates, lp["epsilon"], error_before)
         )
 
         # 5. Clamp and apply action → servo command
@@ -154,14 +154,21 @@ class Controller:
             next_error = self._target_angle - self._commanded_angle
             self._write_state(state, next_error, self._prev_error)
             radius_sq = lp["neighbor_radius"] * lp["neighbor_radius"]
+            # True max over negative Q-values; initializing max to 0 wrongly
+            # inflated the bootstrap when all neighbors had Q < 0. If no
+            # neighbor remains in-radius after the transition, bootstrap with 0.
+            has_next = False
             max_q_next = 0.0
             knn_idxs = self.vms._knn_idxs
             for i in range(n_candidates):
                 entry_idx = knn_idxs[i]
                 if self.vms._distance(state, entry_idx, db) <= radius_sq:
                     next_q = self.vms._q_values[entry_idx]
-                    if next_q > max_q_next:
+                    if not has_next or next_q > max_q_next:
                         max_q_next = next_q
+                        has_next = True
+            if not has_next:
+                max_q_next = 0.0
             td_error = reward + lp["gamma"] * max_q_next - q_value
             self.vms.update_q(credited_entry_idx, lp["alpha"], td_error)
         elif credited_entry_idx < 0:
@@ -238,7 +245,7 @@ class Controller:
         buffer[0] = error
         buffer[1] = prev_error
 
-    def _select_action(self, n_candidates: int, epsilon: float):
+    def _select_action(self, n_candidates: int, epsilon: float, error_before: float):
         """
         Epsilon-greedy action selection over KNN candidates.
 
@@ -272,6 +279,21 @@ class Controller:
                 best_dist = knn_dists[i]
 
         agreement = action_votes[best_action_idx] / n_candidates
+
+        # Far from target but memory votes no-op: consensus deadlock — take a
+        # random non-noop step (same credit as epsilon explore) to unstick.
+        escape_deg = self.skill.noop_escape_error_deg()
+        n_act = len(ACTION_SET)
+        if (
+            abs(error_before) >= escape_deg
+            and best_action_idx == self._noop_action_idx
+            and n_act > 1
+        ):
+            idx = random.randint(0, n_act - 2)
+            if idx >= self._noop_action_idx:
+                idx += 1
+            return idx, 0.0, 0.0, -1, -1.0
+
         return best_action_idx, best_q, agreement, best_entry_idx, best_dist
 
     def _send_telemetry(
