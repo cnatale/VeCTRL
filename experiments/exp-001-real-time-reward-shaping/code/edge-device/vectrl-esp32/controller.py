@@ -74,7 +74,7 @@ class Controller:
         self._noop_action_idx = ACTION_SET.index(0)
         self._prev_action_idx = self._noop_action_idx  # no-op
         self._last_debug_ms = time.ticks_ms()
-        self._state_buffer = [0.0, 0.0, 0.0, 0.0]
+        self._state_buffer = [0.0, 0.0]
         self._action_vote_counts = [0] * len(ACTION_SET)
         self._telemetry_tick_count = 0
         self._empty_tags = ()
@@ -110,13 +110,7 @@ class Controller:
         # 1. Build state vector
         error_before = self._target_angle - self._commanded_angle
         state = self._state_buffer
-        self._write_state(
-            state,
-            self._commanded_angle,
-            self._target_angle,
-            error_before,
-            self._prev_error,
-        )
+        self._write_state(state, error_before, self._prev_error)
 
         # 2–3. KNN search with Mσ filtering and Wσ distance shaping
         lp = self.skill.get_learning_params()
@@ -141,10 +135,8 @@ class Controller:
 
         # 5. Clamp and apply action → servo command
         delta = ACTION_SET[action_idx]
-        prev_commanded_angle = state[0]
-        prev_target_angle = state[1]
-        prev_error = state[2]
-        prev_prev_error = state[3]
+        prev_error = state[0]
+        prev_prev_error = state[1]
         unclamped = self._commanded_angle + delta
         self._commanded_angle = max(ANGLE_MIN, min(ANGLE_MAX, unclamped))
         clamped = unclamped != self._commanded_angle
@@ -160,13 +152,7 @@ class Controller:
         td_error = 0.0
         if candidates and credited_entry_idx >= 0:
             next_error = self._target_angle - self._commanded_angle
-            self._write_state(
-                state,
-                self._commanded_angle,
-                self._target_angle,
-                next_error,
-                self._prev_error,
-            )
+            self._write_state(state, next_error, self._prev_error)
             next_candidates = self.vms.knn_search(
                 state,
                 lp["k"],
@@ -198,13 +184,7 @@ class Controller:
         #    region of state space — bypass td_error_threshold so any
         #    experience can seed future retrievals.
         if not clamped:
-            self._write_state(
-                state,
-                prev_commanded_angle,
-                prev_target_angle,
-                prev_error,
-                prev_prev_error,
-            )
+            self._write_state(state, prev_error, prev_prev_error)
             ip = self.skill.get_insertion_policy()
             effective_policy = "always" if no_candidates else ip["policy"]
             insert_q = reward
@@ -232,8 +212,6 @@ class Controller:
             gc.collect()
             self._write_state(
                 state,
-                self._commanded_angle,
-                self._target_angle,
                 self._target_angle - self._commanded_angle,
                 self._prev_error,
             )
@@ -260,12 +238,10 @@ class Controller:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _write_state(self, buffer, commanded_angle, target_angle, error, prev_error):
-        """Overwrite a reusable 4D state buffer in-place."""
-        buffer[0] = commanded_angle
-        buffer[1] = target_angle
-        buffer[2] = error
-        buffer[3] = prev_error
+    def _write_state(self, buffer, error, prev_error):
+        """Overwrite a reusable 2D state buffer in-place."""
+        buffer[0] = error
+        buffer[1] = prev_error
 
     def _select_action(self, candidates: list, epsilon: float):
         """
@@ -326,10 +302,10 @@ class Controller:
             self.comm.device_id,
             self.skill.skill_id,
             time.ticks_ms(),
+            self._commanded_angle,
+            self._target_angle,
             state[0],
             state[1],
-            state[2],
-            state[3],
             action_idx,
             ACTION_SET[action_idx],
             reward,

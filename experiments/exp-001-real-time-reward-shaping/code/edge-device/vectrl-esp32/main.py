@@ -157,7 +157,7 @@ comm = Comm(
     command_port=config.COMMAND_PORT,
     device_id=config.DEVICE_ID,
 )
-vms = VectorMemoryStore(state_dim=4, action_set=ACTION_SET)
+vms = VectorMemoryStore(state_dim=2, action_set=ACTION_SET)
 skill_runner = SkillRunner()
 controller = Controller(vms, skill_runner, servo, comm)
 
