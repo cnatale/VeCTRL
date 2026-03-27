@@ -30,13 +30,12 @@ class VectorMemoryStore:
         _td_errors[idx]              — last TD error (float32)
         _skill_ids[idx]              — skill id string (reference)
 
-    MAX_ENTRIES is a hard cap. Once full, inserts evict the least-reachable
-    entry (the one most distant from recent KNN queries) so the controller
-    stays on a fixed memory footprint while continuing to adapt.
+    MAX_ENTRIES is a hard cap. Once full, inserts evict the most-visited
+    entry so the controller stays on a fixed memory footprint while
+    continuing to adapt.
     """
 
-    MAX_ENTRIES = 128
-    RECENT_QUERY_BUFFER_SIZE = 8
+    MAX_ENTRIES = 256
 
     def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim
@@ -53,10 +52,6 @@ class VectorMemoryStore:
         self._skill_ids = [""] * n
 
         self._size = 0
-
-        self._rq_buf = array.array("f", [0.0] * (self.RECENT_QUERY_BUFFER_SIZE * d))
-        self._rq_head = 0
-        self._rq_count = 0
 
     # ------------------------------------------------------------------
     # Core operations
@@ -83,7 +78,6 @@ class VectorMemoryStore:
         Returns list of (entry_index, distance) sorted by ascending distance.
         Returns [] if no visible entries exist within radius.
         """
-        self._record_query(query)
         results = []
         radius_sq = neighbor_radius * neighbor_radius
         skill_ids = self._skill_ids
@@ -173,13 +167,9 @@ class VectorMemoryStore:
         """Logically clear all entries.
 
         The backing arrays stay allocated so future inserts reuse the
-        same memory — no GC pressure.  The query ring buffer is also
-        reset so stale queries from the previous skill don't influence
-        eviction decisions.
+        same memory — no GC pressure.
         """
         self._size = 0
-        self._rq_head = 0
-        self._rq_count = 0
 
     def stats(self) -> dict:
         """Summary stats for telemetry and debugging."""
@@ -270,61 +260,24 @@ class VectorMemoryStore:
         self._td_errors[idx] = 0.0
         self._skill_ids[idx] = skill_id
 
-    def _record_query(self, query):
-        """Write query into the flat ring buffer (zero allocation)."""
-        dim = self.state_dim
-        off = self._rq_head * dim
-        buf = self._rq_buf
-        for i in range(dim):
-            buf[off + i] = query[i]
-        self._rq_head = (self._rq_head + 1) % self.RECENT_QUERY_BUFFER_SIZE
-        if self._rq_count < self.RECENT_QUERY_BUFFER_SIZE:
-            self._rq_count += 1
-
     @micropython.native
     def _select_eviction_index(self) -> int:
-        """Evict the entry least reachable from recent KNN queries.
+        """Evict the most-visited entry.
 
-        For each entry, compute its minimum squared-L2 distance to any
-        query in the ring buffer.  The entry with the largest such minimum
-        is the one furthest from the agent's current operating region and
-        gets evicted.  Falls back to least-visited when no queries have
-        been recorded yet (cold start).
+        Highly-visited entries have already had their Q-values
+        well-exploited via TD updates.  Replacing them with fresh
+        experience keeps the memory adapting to the agent's current
+        operating region.  O(n) scan vs the previous O(n*q*d)
+        reachability heuristic.
         """
-        rq_count = self._rq_count
-        if rq_count == 0:
-            best_idx = 0
-            best_vc = self._visit_counts[0]
-            for idx in range(1, self._size):
-                vc = self._visit_counts[idx]
-                if vc < best_vc:
-                    best_idx = idx
-                    best_vc = vc
-            return best_idx
-
-        dim = self.state_dim
-        states = self._states
-        rq_buf = self._rq_buf
-        size = self._size
-        worst_idx = 0
-        worst_min_dist = -1.0
-
-        for idx in range(size):
-            s_off = idx * dim
-            min_dist = 1e18
-            for qi in range(rq_count):
-                q_off = qi * dim
-                d = 0.0
-                for di in range(dim):
-                    diff = states[s_off + di] - rq_buf[q_off + di]
-                    d += diff * diff
-                if d < min_dist:
-                    min_dist = d
-            if min_dist > worst_min_dist:
-                worst_min_dist = min_dist
-                worst_idx = idx
-
-        return worst_idx
+        best_idx = 0
+        best_vc = self._visit_counts[0]
+        for idx in range(1, self._size):
+            vc = self._visit_counts[idx]
+            if vc > best_vc:
+                best_idx = idx
+                best_vc = vc
+        return best_idx
 
     @micropython.native
     def _distance(self, query, entry_idx, distance_bias=None) -> float:
