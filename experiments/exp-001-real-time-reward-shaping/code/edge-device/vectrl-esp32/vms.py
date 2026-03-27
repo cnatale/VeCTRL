@@ -35,7 +35,7 @@ class VectorMemoryStore:
     continuing to adapt.
     """
 
-    MAX_ENTRIES = 256
+    MAX_ENTRIES = 128
 
     def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim
@@ -53,6 +53,10 @@ class VectorMemoryStore:
 
         self._size = 0
 
+        self._knn_idxs = array.array("H", [0] * 16)
+        self._knn_dists = array.array("f", [0.0] * 16)
+        self._knn_count = 0
+
     # ------------------------------------------------------------------
     # Core operations
     # ------------------------------------------------------------------
@@ -66,30 +70,48 @@ class VectorMemoryStore:
         excluded_tags: list = None,
         partition: str = None,
         distance_bias: dict = None,
-    ) -> list:
+    ) -> int:
         """
-        Return up to k nearest entries within neighbor_radius.
+        Return count of up to k nearest entries within neighbor_radius.
 
-        Applies Wσ distance shaping (distance_bias) during L2 computation.
-        Partition filtering restricts matches to entries with the given
-        skill_id.  Tag filtering is not stored in the pool layout
-        (unused in Exp 1–3).
+        Results are written into pre-allocated _knn_idxs and _knn_dists
+        arrays, sorted by ascending distance.  Callers read results
+        directly from those arrays using the returned count.
 
-        Returns list of (entry_index, distance) sorted by ascending distance.
-        Returns [] if no visible entries exist within radius.
+        Zero-allocation hot path: no list/tuple/lambda created per call.
         """
-        results = []
         radius_sq = neighbor_radius * neighbor_radius
         skill_ids = self._skill_ids
+        knn_idxs = self._knn_idxs
+        knn_dists = self._knn_dists
+        count = 0
+
         for idx in range(self._size):
             if partition and skill_ids[idx] != partition:
                 continue
             dist = self._distance(query, idx, distance_bias)
-            if dist <= radius_sq:
-                results.append((idx, dist))
+            if dist > radius_sq:
+                continue
+            if count < k:
+                pos = count
+                while pos > 0 and knn_dists[pos - 1] > dist:
+                    knn_dists[pos] = knn_dists[pos - 1]
+                    knn_idxs[pos] = knn_idxs[pos - 1]
+                    pos -= 1
+                knn_dists[pos] = dist
+                knn_idxs[pos] = idx
+                count += 1
+            elif dist < knn_dists[count - 1]:
+                pos = count - 1
+                while pos > 0 and knn_dists[pos - 1] > dist:
+                    knn_dists[pos] = knn_dists[pos - 1]
+                    knn_idxs[pos] = knn_idxs[pos - 1]
+                    pos -= 1
+                knn_dists[pos] = dist
+                knn_idxs[pos] = idx
 
-        results.sort(key=lambda x: x[1])
-        return results[:k]
+        self._knn_count = count
+        return count
 
     def update_q(self, entry_idx: int, alpha: float, td_delta: float):
         """Apply TD update to entry at entry_idx. Increments visit_count.
