@@ -35,7 +35,7 @@ class VectorMemoryStore:
     continuing to adapt.
     """
 
-    MAX_ENTRIES = 128
+    MAX_ENTRIES = 256
 
     def __init__(self, state_dim: int, action_set: list, max_entries: int = None):
         self.state_dim = state_dim
@@ -56,6 +56,10 @@ class VectorMemoryStore:
         self._knn_idxs = array.array("H", [0] * 16)
         self._knn_dists = array.array("f", [0.0] * 16)
         self._knn_count = 0
+
+        self._knn_next_idxs = array.array("H", [0] * 16)
+        self._knn_next_dists = array.array("f", [0.0] * 16)
+        self._knn_next_count = 0
 
     # ------------------------------------------------------------------
     # Core operations
@@ -112,6 +116,56 @@ class VectorMemoryStore:
 
         self._knn_count = count
         return count
+
+    def knn_search_dual(
+        self,
+        query_s: list,
+        query_next: list,
+        k: int,
+        neighbor_radius: float,
+        required_tags: list = None,
+        excluded_tags: list = None,
+        partition: str = None,
+        distance_bias: dict = None,
+        fill_first: bool = True,
+    ) -> int:
+        """
+        Single O(n) pass: squared distances to query_s and query_next per entry.
+
+        Maintains two sorted top-k buffers (within neighbor_radius):
+          fill_first True  — _knn_idxs / _knn_dists for query_s
+          always           — _knn_next_idxs / _knn_next_dists for query_next
+
+        With fill_first False, only the next-state top-k is updated (TD bootstrap
+        after a prior knn_search on query_s). Distances for both queries are
+        still computed in one dimension loop per entry via _distance_pair.
+
+        Returns count_next (neighbors of query_next within radius).
+        """
+        radius_sq = neighbor_radius * neighbor_radius
+        skill_ids = self._skill_ids
+        knn_idxs = self._knn_idxs
+        knn_dists = self._knn_dists
+        knn_next_idxs = self._knn_next_idxs
+        knn_next_dists = self._knn_next_dists
+        count_s = 0
+        count_next = 0
+
+        for idx in range(self._size):
+            if partition and skill_ids[idx] != partition:
+                continue
+            ds, dn = self._distance_pair(query_s, query_next, idx, distance_bias)
+            if fill_first and ds <= radius_sq:
+                count_s = self._insert_topk(knn_idxs, knn_dists, k, count_s, ds, idx)
+            if dn <= radius_sq:
+                count_next = self._insert_topk(
+                    knn_next_idxs, knn_next_dists, k, count_next, dn, idx
+                )
+
+        if fill_first:
+            self._knn_count = count_s
+        self._knn_next_count = count_next
+        return count_next
 
     def update_q(self, entry_idx: int, alpha: float, td_delta: float):
         """Apply TD update to entry at entry_idx. Increments visit_count.
@@ -300,6 +354,60 @@ class VectorMemoryStore:
                 best_idx = idx
                 best_vc = vc
         return best_idx
+
+    @micropython.native
+    def _insert_topk(
+        self,
+        knn_idxs,
+        knn_dists,
+        k: int,
+        count: int,
+        dist: float,
+        idx: int,
+    ) -> int:
+        """Insert (idx, dist) into sorted top-k buffers; dist already within radius."""
+        if count < k:
+            pos = count
+            while pos > 0 and knn_dists[pos - 1] > dist:
+                knn_dists[pos] = knn_dists[pos - 1]
+                knn_idxs[pos] = knn_idxs[pos - 1]
+                pos -= 1
+            knn_dists[pos] = dist
+            knn_idxs[pos] = idx
+            return count + 1
+        if dist >= knn_dists[count - 1]:
+            return count
+        pos = count - 1
+        while pos > 0 and knn_dists[pos - 1] > dist:
+            knn_dists[pos] = knn_dists[pos - 1]
+            knn_idxs[pos] = knn_idxs[pos - 1]
+            pos -= 1
+        knn_dists[pos] = dist
+        knn_idxs[pos] = idx
+        return count
+
+    @micropython.native
+    def _distance_pair(self, query_s, query_next, entry_idx, distance_bias=None):
+        """Squared L2 to query_s and query_next in one pass over stored state."""
+        dim = self.state_dim
+        off = entry_idx * dim
+        states = self._states
+        ds = 0.0
+        dn = 0.0
+        if not distance_bias:
+            for i in range(dim):
+                diff_s = query_s[i] - states[off + i]
+                ds += diff_s * diff_s
+                diff_n = query_next[i] - states[off + i]
+                dn += diff_n * diff_n
+        else:
+            for i in range(dim):
+                diff_s = query_s[i] - states[off + i]
+                diff_n = query_next[i] - states[off + i]
+                w = distance_bias.get(str(i), 1.0)
+                ds += w * diff_s * diff_s
+                dn += w * diff_n * diff_n
+        return ds, dn
 
     @micropython.native
     def _distance(self, query, entry_idx, distance_bias=None) -> float:

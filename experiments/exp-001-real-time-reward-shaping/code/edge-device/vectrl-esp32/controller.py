@@ -78,6 +78,7 @@ class Controller:
         self._action_vote_counts = [0] * len(ACTION_SET)
         self._telemetry_tick_count = 0
         self._empty_tags = ()
+        self._state_pre_buffer = [0.0, 0.0]
 
     # ------------------------------------------------------------------
     # Main loop
@@ -111,6 +112,8 @@ class Controller:
         error_before = self._target_angle - self._commanded_angle
         state = self._state_buffer
         self._write_state(state, error_before, self._prev_error)
+        self._state_pre_buffer[0] = error_before
+        self._state_pre_buffer[1] = self._prev_error
 
         # 2–3. KNN search with Mσ filtering and Wσ distance shaping
         lp = self.skill.get_learning_params()
@@ -153,20 +156,28 @@ class Controller:
         if n_candidates > 0 and credited_entry_idx >= 0:
             next_error = self._target_angle - self._commanded_angle
             self._write_state(state, next_error, self._prev_error)
-            radius_sq = lp["neighbor_radius"] * lp["neighbor_radius"]
-            # True max over negative Q-values; initializing max to 0 wrongly
-            # inflated the bootstrap when all neighbors had Q < 0. If no
-            # neighbor remains in-radius after the transition, bootstrap with 0.
+            # One O(n) pass: distances to s_pre and s_next; top-k for s_next only
+            # (fill_first=False — action selection already used knn_search(s_pre)).
+            n_next = self.vms.knn_search_dual(
+                self._state_pre_buffer,
+                state,
+                k=lp["k"],
+                neighbor_radius=lp["neighbor_radius"],
+                required_tags=mf["required_tags"],
+                excluded_tags=mf["excluded_tags"],
+                partition=mf["partition"],
+                distance_bias=db,
+                fill_first=False,
+            )
             has_next = False
             max_q_next = 0.0
-            knn_idxs = self.vms._knn_idxs
-            for i in range(n_candidates):
-                entry_idx = knn_idxs[i]
-                if self.vms._distance(state, entry_idx, db) <= radius_sq:
-                    next_q = self.vms._q_values[entry_idx]
-                    if not has_next or next_q > max_q_next:
-                        max_q_next = next_q
-                        has_next = True
+            knn_next = self.vms._knn_next_idxs
+            for i in range(n_next):
+                entry_idx = knn_next[i]
+                next_q = self.vms._q_values[entry_idx]
+                if not has_next or next_q > max_q_next:
+                    max_q_next = next_q
+                    has_next = True
             if not has_next:
                 max_q_next = 0.0
             td_error = reward + lp["gamma"] * max_q_next - q_value
