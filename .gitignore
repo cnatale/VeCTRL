@@ -141,3 +141,6 @@ vite.config.ts.timestamp-*
 **/.DS_Store
 **/__pycache__/
 **/__pycache__/**
+
+# Analysis output (generated plots)
+experiments/*/analysis/output/

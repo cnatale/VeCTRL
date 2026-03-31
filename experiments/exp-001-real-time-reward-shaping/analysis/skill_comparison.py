@@ -31,84 +31,13 @@ Usage:
     python skill_comparison.py          # auto-picks the most recent CSV in ../data/
 """
 
-import csv
 import math
-import os
 import sys
+
+from _util import fmt, load_csv, resolve_csv_path, segment_rows, to_float
 
 SETTLE_THRESHOLD_DEG = 5.0
 SETTLE_N = 5  # consecutive rows within threshold
-
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-
-
-# ------------------------------------------------------------------
-# CSV loading
-# ------------------------------------------------------------------
-
-
-def load_csv(path: str) -> list[dict]:
-    rows = []
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
-    return rows
-
-
-def to_float(val, default=0.0):
-    try:
-        return float(val)
-    except ValueError, TypeError:
-        return default
-
-
-# ------------------------------------------------------------------
-# Segmentation
-# ------------------------------------------------------------------
-
-
-def segment_rows(rows: list[dict]) -> list[dict]:
-    """
-    Split rows into segments by (skill_id, target_angle) transitions.
-    Each segment dict: {skill_id, target_angle, rows: [...]}.
-    """
-    if not rows:
-        return []
-
-    segments = []
-    current_skill = rows[0].get("skill_id", "")
-    current_target = to_float(rows[0].get("target_angle"))
-    current_rows = []
-
-    for row in rows:
-        skill = row.get("skill_id", "")
-        target = to_float(row.get("target_angle"))
-        if skill != current_skill or target != current_target:
-            if current_rows:
-                segments.append(
-                    {
-                        "skill_id": current_skill,
-                        "target_angle": current_target,
-                        "rows": current_rows,
-                    }
-                )
-            current_skill = skill
-            current_target = target
-            current_rows = [row]
-        else:
-            current_rows.append(row)
-
-    if current_rows:
-        segments.append(
-            {
-                "skill_id": current_skill,
-                "target_angle": current_target,
-                "rows": current_rows,
-            }
-        )
-
-    return segments
 
 
 # ------------------------------------------------------------------
@@ -189,14 +118,6 @@ def compute_metrics(segment: dict) -> dict:
 # ------------------------------------------------------------------
 # Reporting
 # ------------------------------------------------------------------
-
-
-def fmt(val, decimals=2):
-    if val is None:
-        return "N/A"
-    if isinstance(val, float):
-        return f"{val:.{decimals}f}"
-    return str(val)
 
 
 def print_segment_table(metrics_list: list[dict]):
@@ -313,20 +234,8 @@ def evaluate_hypothesis(agg: dict[str, dict]):
 # ------------------------------------------------------------------
 
 
-def find_latest_csv(data_dir: str) -> str:
-    csvs = [f for f in os.listdir(data_dir) if f.endswith(".csv")]
-    if not csvs:
-        print(f"No CSV files found in {data_dir}")
-        sys.exit(1)
-    csvs.sort(key=lambda f: os.path.getmtime(os.path.join(data_dir, f)), reverse=True)
-    return os.path.join(data_dir, csvs[0])
-
-
 def main():
-    if len(sys.argv) > 1:
-        csv_path = sys.argv[1]
-    else:
-        csv_path = find_latest_csv(DATA_DIR)
+    csv_path = resolve_csv_path()
 
     print(f"Loading: {csv_path}")
     rows = load_csv(csv_path)
