@@ -90,22 +90,52 @@ def plot_histogram(
     print(f"  Saved: {path}")
 
 
-def plot_timeseries(rows: list[dict], output_dir: str):
-    durations = [to_float(r.get("tick_duration_ms")) for r in rows]
-    skills = [r.get("skill_id", "") for r in rows]
+def _extract_skill_runs(rows: list[dict]) -> list[dict]:
+    """Group consecutive rows by skill_id into per-run dicts."""
+    if not rows:
+        return []
 
-    unique_skills = list(dict.fromkeys(skills))
+    runs: list[dict] = []
+    cur_skill = rows[0].get("skill_id", "")
+    cur_rows: list[dict] = [rows[0]]
+
+    for row in rows[1:]:
+        skill = row.get("skill_id", "")
+        if skill != cur_skill:
+            runs.append({"skill_id": cur_skill, "rows": cur_rows})
+            cur_skill = skill
+            cur_rows = [row]
+        else:
+            cur_rows.append(row)
+
+    runs.append({"skill_id": cur_skill, "rows": cur_rows})
+    return runs
+
+
+def plot_timeseries(rows: list[dict], output_dir: str):
+    runs = _extract_skill_runs(rows)
+
+    skill_colors: dict[str, str] = {}
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    skill_color = {
-        s: color_cycle[i % len(color_cycle)] for i, s in enumerate(unique_skills)
-    }
 
     fig, ax = plt.subplots(figsize=(14, 4))
 
-    colors = [skill_color[s] for s in skills]
-    ax.scatter(
-        range(len(durations)), durations, c=colors, s=4, alpha=0.6, edgecolors="none"
-    )
+    for run in runs:
+        skill = run["skill_id"]
+        if skill not in skill_colors:
+            skill_colors[skill] = color_cycle[len(skill_colors) % len(color_cycle)]
+
+        xs = list(range(len(run["rows"])))
+        ys = [to_float(r.get("tick_duration_ms")) for r in run["rows"]]
+        ax.scatter(
+            xs,
+            ys,
+            color=skill_colors[skill],
+            s=4,
+            alpha=0.6,
+            edgecolors="none",
+            label=skill,
+        )
 
     ax.axhline(
         GC_SPIKE_THRESHOLD_MS,
@@ -115,11 +145,17 @@ def plot_timeseries(rows: list[dict], output_dir: str):
         label=f"{GC_SPIKE_THRESHOLD_MS} ms threshold",
     )
 
-    for skill in unique_skills:
-        ax.scatter([], [], color=skill_color[skill], label=skill, s=20)
-    ax.legend(loc="upper right", fontsize=8)
+    handles_seen: set[str] = set()
+    handles, labels = ax.get_legend_handles_labels()
+    deduped_h, deduped_l = [], []
+    for h, lbl in zip(handles, labels):
+        if lbl not in handles_seen:
+            handles_seen.add(lbl)
+            deduped_h.append(h)
+            deduped_l.append(lbl)
+    ax.legend(deduped_h, deduped_l, loc="upper right", fontsize=8)
 
-    ax.set_xlabel("Tick index")
+    ax.set_xlabel("Ticks since skill start")
     ax.set_ylabel("tick_duration_ms")
     ax.set_title("Tick Duration Over Time — GC Health Check")
     ax.grid(True, alpha=0.3)

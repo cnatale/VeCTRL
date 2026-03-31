@@ -117,7 +117,8 @@ def plot_memory_size(rows: list[dict], runs: list[dict], output_dir: str):
         if skill not in skill_colors:
             skill_colors[skill] = color_cycle[len(skill_colors) % len(color_cycle)]
 
-        xs = list(range(run["start_idx"], run["end_idx"] + 1))
+        n_ticks = run["end_idx"] - run["start_idx"] + 1
+        xs = list(range(n_ticks))
         ys = [to_float(r.get("memory_size")) for r in run["rows"]]
         ax.plot(xs, ys, color=skill_colors[skill], linewidth=1.2, label=skill)
 
@@ -131,7 +132,7 @@ def plot_memory_size(rows: list[dict], runs: list[dict], output_dir: str):
             deduped_l.append(lbl)
     ax.legend(deduped_h, deduped_l, loc="lower right")
 
-    ax.set_xlabel("Tick index")
+    ax.set_xlabel("Ticks since skill start")
     ax.set_ylabel("memory_size (VMS entries)")
     ax.set_title("Memory Growth — Exp 001")
     ax.grid(True, alpha=0.3)
@@ -155,7 +156,8 @@ def plot_retrieval_consistency(rows: list[dict], runs: list[dict], output_dir: s
         if skill not in skill_colors:
             skill_colors[skill] = color_cycle[len(skill_colors) % len(color_cycle)]
 
-        xs = list(range(run["start_idx"], run["end_idx"] + 1))
+        n_ticks = run["end_idx"] - run["start_idx"] + 1
+        xs = list(range(n_ticks))
         ys = [to_float(r.get("neighbor_agreement")) for r in run["rows"]]
         ax.plot(
             xs, ys, color=skill_colors[skill], linewidth=0.8, alpha=0.6, label=skill
@@ -171,7 +173,7 @@ def plot_retrieval_consistency(rows: list[dict], runs: list[dict], output_dir: s
             deduped_l.append(lbl)
     ax.legend(deduped_h, deduped_l, loc="lower right")
 
-    ax.set_xlabel("Tick index")
+    ax.set_xlabel("Ticks since skill start")
     ax.set_ylabel("neighbor_agreement")
     ax.set_title("Retrieval Consistency — Exp 001")
     ax.set_ylim(-0.05, 1.05)
@@ -196,7 +198,8 @@ def plot_q_value(rows: list[dict], runs: list[dict], output_dir: str):
         if skill not in skill_colors:
             skill_colors[skill] = color_cycle[len(skill_colors) % len(color_cycle)]
 
-        xs = list(range(run["start_idx"], run["end_idx"] + 1))
+        n_ticks = run["end_idx"] - run["start_idx"] + 1
+        xs = list(range(n_ticks))
         ys = [to_float(r.get("q_value")) for r in run["rows"]]
         ax.plot(
             xs, ys, color=skill_colors[skill], linewidth=0.8, alpha=0.7, label=skill
@@ -212,7 +215,7 @@ def plot_q_value(rows: list[dict], runs: list[dict], output_dir: str):
             deduped_l.append(lbl)
     ax.legend(deduped_h, deduped_l, loc="best")
 
-    ax.set_xlabel("Tick index")
+    ax.set_xlabel("Ticks since skill start")
     ax.set_ylabel("q_value")
     ax.set_title("Q-Value Trajectory — Exp 001")
     ax.grid(True, alpha=0.3)
