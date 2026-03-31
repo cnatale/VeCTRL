@@ -4,9 +4,9 @@ VeCTRL edge device entry point — Exp 001 (Platform A, single servo).
 Connects to WiFi, initializes all modules, and runs the control loop.
 """
 
-import network
+import network  # type: ignore
 import time
-from machine import Pin, I2C
+from machine import Pin, I2C  # type: ignore
 
 import config
 from comm import Comm

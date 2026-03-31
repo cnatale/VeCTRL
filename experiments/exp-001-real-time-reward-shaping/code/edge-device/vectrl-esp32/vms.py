@@ -15,7 +15,7 @@ during the control loop.
 
 import array
 import json
-import micropython
+import micropython  # type: ignore
 
 
 class VectorMemoryStore:
