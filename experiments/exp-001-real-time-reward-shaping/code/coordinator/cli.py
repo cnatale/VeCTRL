@@ -7,7 +7,6 @@ Runs in the main thread; telemetry logging runs in a background thread.
 Commands:
     1          load reach-target-fast
     2          load reach-target-smoothly
-    3          load reach-target-with-low-energy
     t <angle>  set target angle (e.g. "t 120")
     s          print current memory stats (from last telemetry packet)
     q          quit
@@ -18,7 +17,6 @@ class CLI:
     SKILL_MAP = {
         "1": "reach-target-fast",
         "2": "reach-target-smoothly",
-        "3": "reach-target-with-low-energy",
     }
 
     def __init__(self, comm, skill_store, device_id: str):
@@ -42,7 +40,6 @@ class CLI:
         print("\nVeCTRL Coordinator — Exp 001")
         print("  1  reach-target-fast")
         print("  2  reach-target-smoothly")
-        print("  3  reach-target-with-low-energy")
         print("  t <angle>  set target angle")
         print("  s  show last telemetry")
         print("  q  quit\n")
