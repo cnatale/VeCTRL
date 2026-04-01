@@ -12,8 +12,8 @@ That raises a more interesting question:
 
 **Can that same idea work inside a real-time control loop, on constrained hardware, interacting with the physical world?**
 
-Not in simulation. Not with a GPU.  
-But on an ESP32, running at 20 Hz, driving a motor.
+Not in a simulation, or on an expensive GPU.
+Running on an ESP32, in a 20 Hz loop, driving a motor.
 
 More concretely:
 
