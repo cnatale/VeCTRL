@@ -1,32 +1,59 @@
 # Can You Reshape a Controller's Behavior at Runtime, in the Physical World, on a $5 Chip?
 
-*A technical deep dive into Experiment 001 of VeCTRL — real-time reward shaping on a single-servo rig*
+*A technical deep dive into Experiment 001 of [VeCTRL](https://github.com/cnatale/veCTRL) — real-time reward shaping on a single-servo rig*
 
 ---
 
-Most conversations about changing an AI agent's behavior involve retraining. You collect data, you update a model, you evaluate, you deploy. Even the fastest iteration cycles still treat behavior change as an offline batch process.
+In modern AI systems, changing an agent’s behavior is often as simple as changing its objective.
 
-This experiment asked a different question.
+In LLM-based systems, the quickest way to achieve this is updating a system prompt or modifying the context. The model stays the same, but the behavior shifts immediately.
 
-**Can you change what an embedded controller is trying to optimize — the objective itself — in the middle of a live control loop, with no retraining, no new firmware, and no interruption to actuation?**
+That raises a more interesting question:
 
-The short answer: yes, with caveats. The behavioral differences between skills are real and measurable. But the path to getting there involved three separate failure modes and one architectural tradeoff that reshaped a core assumption. That story is worth telling carefully, because the failures reveal as much as the successes.
+**Can that same idea work inside a real-time control loop, on constrained hardware, interacting with the physical world?**
+
+Not in simulation. Not with a GPU.  
+But on an ESP32, running at 20 Hz, driving a motor.
+
+More concretely:
+
+**Can you change what a controller is optimizing for in the middle of execution, without retraining, without redeploying code, and without interrupting the control loop?**
+
+This experiment explores that question.
+
+The short answer: yes, with caveats. The behavioral differences between skills are real and measurable. But the path to getting there involved multiple failure modes and one architectural tradeoff that reshaped a core assumption. I think the story is worth sharing, because the failures reveal as much as the successes.
 
 ---
 
 ## What VeCTRL Is
 
-VeCTRL (Vector Control Loop) is a research architecture for embodied AI systems. The core bet is that control policies can emerge from `state embeddings → KNN retrieval → action selection → reinforcement updates` rather than from trained neural networks.
+[VeCTRL](https://github.com/cnatale/veCTRL) represents an architectural bet:
 
-The motivation is simple: neural networks encode behavior in weights. Changing behavior means changing weights, which means retraining. But in a KNN-based controller, behavior emerges from the structure of a memory store — what's in it, how entries are scored, and what objective is being optimized. All of that can be changed at runtime without touching the controller's core machinery.
+**Can a higher-level planner that sits outside the fast control loop shape real-time physical behavior by changing the objective and learning dynamics of an on-device controller?**
 
-This experiment was designed to test the most minimal version of that claim.
+In the version tested here, the low-latency loop runs on the edge device. It observes state, selects actions, and updates local action values in real time. That loop has to stay simple, cheap, and responsive enough to run on constrained hardware.
+
+The higher-level layer lives off-device. Today that is a laptop coordinator. Eventually, the goal is for that layer to be an LLM-based agent.
+
+But the LLM is not meant to micromanage motor actions at control-loop frequency. It is outside the loop. Its role is to inspect available skills, choose among them, or generate new ones by modifying things like:
+
+- the cost function
+- reward weights
+- exploration parameters
+- termination conditions
+- other learning hyperparameters
+
+In other words, the planner does not directly control the servo. It changes what the servo controller is trying to optimize, and how it learns while doing so.
+
+Experiment 001 is a first test of that separation. Before asking whether an LLM can select or author useful skills, I wanted to know whether swapping structured objectives in real time would actually produce distinct physical behavior on-device.
+
+That is the narrower question this experiment is trying to validate.
 
 ---
 
 ## Setup
 
-The physical setup was deliberately minimal. A single MG995 servo connected to an ESP32 microcontroller running MicroPython. The task: move the servo to a target angle and hold it there.
+The physical setup was deliberately minimal. A single 9g micro servo connected to an ESP32 microcontroller running MicroPython. The task: move the servo to a target angle and hold it there.
 
 The software splits into two layers:
 
@@ -37,7 +64,7 @@ COORDINATOR (Python — Laptop)
 
               ↕ WiFi / UDP
 
-EDGE DEVICE (MicroPython — ESP32)
+EDGE DEVICE (MicroPython – ESP32)
   Owns: vector memory store, KNN, Q-learning, servo actuation
   Sends: telemetry stream (UDP)
 ```
@@ -69,7 +96,7 @@ Two skills were tested in this experiment:
 
 **`reach_target_smoothly`**: Error penalty paired with a smoothness penalty — cost applied to the delta between consecutive action values. The controller should prefer gradual moves over sharp ones.
 
-Same memory store. Same KNN code. Same servo. Different reward weights → different behavior.
+The memory store architecture, KNN code, and hardware remain constant. Different reward weights lead to different behavior.
 
 ---
 
@@ -112,7 +139,7 @@ _TELEM_FMT = (
 )
 ```
 
-One string allocation instead of seven nested dict allocations. Peak heap cost dropped from ~1.2 KB per send to ~0.5 KB. State dimensionality was also reduced from 4D to 2D — keeping only `[error, prev_error]`, halving the memory footprint of every VMS entry.
+One string allocation instead of seven nested dict allocations led to peak heap cost dropping from ~1.2 KB per send to ~0.5 KB. State dimensionality was also reduced from 4D to 2D — keeping only `[error, prev_error]`, halving the memory footprint of every VMS entry.
 
 The VMS itself uses pre-allocated parallel arrays initialized at startup:
 
@@ -123,7 +150,7 @@ self._q_values = array.array("f", [0.0] * n)
 self._visit_counts = array.array("H", [0] * n)
 ```
 
-No per-entry object allocation. Heap footprint is fixed at init time.
+This eliminates per-entry object allocation. Heap footprint is fixed at init time.
 
 ### 2. Convergence failure: the "confident no-op" deadlock
 
@@ -131,7 +158,7 @@ After the OOM issues were resolved, a different failure appeared. The controller
 
 The mechanism: once the VMS had accumulated enough entries, KNN retrieval in the neighborhood around the controller's current state would return a consensus of no-op actions — neighbors that had historically not moved the servo had accumulated visits, and therefore relatively high Q-values. The controller kept retrieving this cluster, confirming it with more visits, and remained deadlocked.
 
-This is not a bug — it's correct behavior for a controller that has converged on a local optimum. But it's pathological when the local optimum is far from the target.
+This is not a bug. It's correct behavior for a controller that has converged on a local optimum. But it's pathological when the local optimum is far from the target.
 
 The fix was an escape heuristic: if error is above a threshold and the greedy action from KNN is a no-op, override with a random non-no-op:
 
@@ -151,7 +178,7 @@ This is credited as an exploratory action and breaks the deadlock without corrup
 
 ### 3. TD update degradation from shared KNN state
 
-The initial implementation used a single KNN query per tick — the same neighbors found for action selection were also used to estimate `max_Q(s')` for the TD update. This is wrong: neighbors of `s` (the pre-action state) are not neighbors of `s'` (the post-action state). Using them as a proxy for `max_Q(s')` degrades the accuracy of the TD signal, because the wrong neighborhood is being used to estimate future value.
+To minimize tick duration, the initial implementation used a single KNN query per tick. The same neighbors found for action selection were also used to estimate `max_Q(s')` for the TD update. However, neighbors of `s` (the pre-action state) are not neighbors of `s'` (the post-action state). Using them as a proxy for `max_Q(s')` degraded the accuracy of the TD signal, because the wrong neighborhood was being used to estimate future value.
 
 The correct approach requires separate neighbor sets for `s` and `s'`. But two full O(n) scans per tick doubles the compute budget, which is already tight at 20 Hz.
 
@@ -187,7 +214,7 @@ Overall (205 ticks):
   Ticks exceeding 30 ms: 163 (79.5%)
 ```
 
-The 20 Hz tick budget is 50ms. The median tick is running at 59ms. Nearly 80% of ticks exceed 30ms. Looking at the analysis script's threshold, this gets flagged as potential "GC pressure" — but the actual cause is the algorithmic work of the second scan, not the garbage collector.
+The 20 Hz tick budget is 50ms. The median tick is running at 59ms. Nearly 80% of ticks exceed 30ms. I found that the actual cause is the algorithmic work of the second scan.
 
 The controller has two tick modes:
 
@@ -203,11 +230,11 @@ With epsilon=0.2, roughly 20% of ticks are exploratory. The remaining 80% pay th
 
 Since the scan is O(n), the memory cap directly sets the tick time ceiling. With MAX_ENTRIES=256, the greedy-tick scan is consistently over budget. With MAX_ENTRIES=128, the same two-scan architecture stays within the 50ms budget.
 
-But this is a genuine tradeoff, not a free fix. More memory entries means broader state-space coverage — the controller has more reference points for different (error, prev_error) combinations and can build a more detailed Q-value surface. With 128 entries, the memory fills faster and the eviction policy starts replacing entries earlier, which limits how finely the controller can represent the task geometry.
+More memory entries means broader state-space coverage — the controller has more reference points for different (error, prev_error) combinations and can build a more detailed Q-value surface. With 128 entries, the memory fills faster and the eviction policy starts replacing entries earlier, which limits how finely the controller can represent the task geometry.
 
 For this experiment, 128 entries is viable: the 2D state space is simple enough that 128 reference points provide reasonable coverage. Whether that holds as state dimensionality grows is an open question for later experiments.
 
-The practical conclusion: **on MicroPython at 20 Hz, MAX_ENTRIES=128 is the working point for a two-scan architecture.** Pushing to 256 entries trades timing reliability for pattern richness, and at 256 the timing budget is consistently blown. If higher memory capacity is needed at the same control rate, the path is Arduino/PlatformIO — not more tuning of the MicroPython runtime.
+The practical conclusion: **on ESP32 MicroPython at 20 Hz, MAX_ENTRIES=128 is the working point for a two-scan architecture.** Pushing to 256 entries trades timing reliability for pattern richness, and at 256 the timing budget is consistently blown. If higher memory capacity is needed at the same control rate, the path is Arduino/PlatformIO.
 
 ---
 
@@ -253,7 +280,7 @@ Mean absolute error — higher → slower convergence:
 RESULT: 4/5 metrics support the hypothesis (partial).
 ```
 
-The hypothesis — that `reach_target_smoothly` produces slower, smoother motion — receives partial support. Action magnitude and jerk both move in the expected direction. But the overshoot result is a clear contradiction, driven largely by the 122° overshoot in the failed 180° run. The mean absolute error gap (13.13° vs 37.33°) indicates `reach_target_smoothly` struggles to converge consistently, not just converging more gently.
+The hypothesis, that `reach_target_smoothly` produces slower, smoother motion, receives partial support. Action magnitude and jerk both move in the expected direction. But the overshoot result is a clear contradiction, driven largely by the 122° overshoot in the failed 180° run. The mean absolute error gap (13.13° vs 37.33°) indicates `reach_target_smoothly` struggles to converge consistently, not just converging more gently.
 
 One important note from the analysis: there is no IMU or encoder on this rig. The metrics describe the *control policy's* behavior — how the agent's decision sequence changes between skills — not what the servo physically does. Mechanical effects like backlash, inertia, and stalling are invisible. For the question being asked (does a skill config change alter agent behavior?) the software trajectory is the correct subject of measurement, but that limit is worth stating explicitly.
 
@@ -262,10 +289,10 @@ One important note from the analysis: there is no IMU or encoder on this rig. Th
 Despite the mixed settling results, the behavioral differentiation between skills is real:
 
 - Action magnitude is detectably lower under the smooth skill (2.21 vs 2.66)
-- The smoothness penalty shapes action selection — the controller learns to prefer smaller deltas
+- The smoothness penalty shapes action selection; the controller learns to prefer smaller deltas
 - The failed 180° run is itself informative: the smoothness cost creates a regime where the agent won't pay the penalty to make the move required for large-range targets, and the escape heuristic alone isn't sufficient to overcome it
 
-Skill switching produces immediate behavioral changes. The objectives are doing something real. The results are partial, not clean — but the core claim holds.
+Skill switching produces immediate behavioral changes. The objectives are doing something real. The results are partial, but the core claim holds.
 
 ---
 
@@ -285,13 +312,13 @@ The post-run analysis scripts measure four things per skill run:
 
 ## The Open Question: Memory Reset on Skill Switch
 
-The current implementation clears the VMS when a new skill is loaded. This is conservative and correct for this experiment — it isolates the behavioral signal to the skill's objective, not residual memory from prior learning.
+The current implementation clears the VMS when a new skill is loaded. This is conservative and correct for this experiment. It isolates the behavioral signal to the skill's objective, not residual memory from prior learning.
 
-But it means every skill switch starts from scratch. And given the 128-entry cap, the memory fills in the first few hundred ticks and the eviction policy starts replacing entries. With only 128 slots total, the effective state coverage is limited.
+But it means every skill switch starts from scratch. And given the max entry cap, the memory fills in the first few hundred ticks and the eviction policy starts replacing entries. Effective state coverage is limited by the total number of memories (256 in the test results).
 
 The design question for later experiments: can skills tag and retain their own memory partitions across switches, bootstrapping re-evaluation under a new reward function? Or does cross-contamination between Q-value surfaces from different objectives destabilize control enough that starting fresh is always better?
 
-Experiment 3 will test exactly this — skill-conditioned memory partitioning over a shared physical substrate.
+Experiment 3 will test exactly this: skill-conditioned memory partitioning over a shared physical substrate.
 
 ---
 
@@ -313,18 +340,18 @@ This is experiment 1 of 11. The roadmap tests one central question:
 
 Phase 1 (experiments 1–3) validates the control substrate on a single servo. The progression is deliberate: start as simple as physically possible, validate the load-bearing architectural claims before adding hardware complexity.
 
-Experiment 1 shows that objective switching works and produces measurable behavioral differences on inexpensive hardware. The results are partial — the timing data shows the two-scan TD bootstrap pushes over budget at MAX_ENTRIES=256, and the smooth skill fails to settle on large-range targets. But the core claim holds: changing the reward function changes behavior within the same control loop, without retraining, without stopping actuation.
+Experiment 1 shows that objective switching works and produces measurable behavioral differences on inexpensive hardware. The results are partial: the timing data shows the two-scan TD bootstrap pushes over budget at MAX_ENTRIES=256, and the smooth skill fails to settle on large-range targets. But the core claim holds: changing the reward function changes behavior within the same control loop, without retraining, without stopping actuation.
 
 ---
 
 ## What's Next
 
-The immediate next step is adding an IMU to the servo rig (Experiment 2 — adaptive vector density). The IMU closes the sensor gap that the skill comparison analysis explicitly flags: right now the only feedback is `commanded_angle`, which is what was sent, not what the servo did. Ground-truth position feedback changes what state representations are possible and what metrics mean.
+The immediate next step is adding an IMU to the servo rig (Experiment 2: adaptive vector density). The IMU closes the sensor gap that the skill comparison analysis explicitly flags: right now the only feedback is `commanded_angle`, which is what was sent, not what the servo did. Ground-truth position feedback changes what state representations are possible and what metrics mean.
 
 The hypothesis for Experiment 2: the controller should allocate more memory points in frequently-visited state regions, improving local precision without increasing total memory footprint. Given the 128-entry cap discovered here, that tradeoff is sharper than expected going in.
 
-After that, Experiment 3 tests skill-conditioned memory partitioning. And eventually, Experiments 5 and 6 ask an LLM to generate the skills — not the code, the objectives. The reward weights, learning hyperparameters, termination conditions. Whether a language model can generate a structured objective that produces the right behavior from a KNN controller on an ESP32 is where this research is heading.
+After that, Experiment 3 tests skill-conditioned memory partitioning. And eventually, Experiments 5 and 6 ask an LLM to generate the skills: the objectives. The reward weights, learning hyperparameters, and termination conditions. Whether a language model can generate a structured objective that produces the right behavior from a KNN controller on an ESP32 is where this research is heading.
 
 ---
 
-*VeCTRL is open research in progress. If you're working on embodied AI, vector-memory control, or LLM-guided RL systems, I'm interested in comparing approaches.*
+*[VeCTRL](https://github.com/cnatale/veCTRL) is open research in progress. If you're working on embodied AI, vector-memory control, or LLM-guided RL systems, I'm interested in comparing approaches.*
