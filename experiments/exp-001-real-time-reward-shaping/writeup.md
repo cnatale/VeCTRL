@@ -21,7 +21,7 @@ More concretely:
 
 This experiment explores that question.
 
-The short answer: yes, with caveats. The behavioral differences between skills are real and measurable. But the path to getting there involved multiple failure modes and one architectural tradeoff that reshaped a core assumption. I think the story is worth sharing, because the failures reveal as much as the successes.
+The short answer: [yes, with caveats](https://github.com/cnatale/VeCTRL/blob/main/experiments/exp-001-real-time-reward-shaping/test-results/esp32-arm_exp-001_20260326_204323.csv). The behavioral differences between skills are real and measurable. But the path to getting there involved multiple failure modes and one architectural tradeoff that reshaped a core assumption. I think the story is worth sharing, because the failures reveal as much as the successes.
 
 ---
 

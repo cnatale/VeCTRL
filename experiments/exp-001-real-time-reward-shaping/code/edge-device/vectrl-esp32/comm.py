@@ -31,19 +31,6 @@ class Comm:
         # Send socket: used for telemetry (fire-and-forget)
         self._send_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    def send_telemetry(self, packet: dict):
-        """
-        Serialize and send a telemetry packet to the coordinator.
-        Non-blocking — increments counters on error for debug visibility.
-        """
-        try:
-            data = json.dumps(packet).encode("utf-8")
-            self._send_sock.sendto(data, (self._coordinator_ip, self._telemetry_port))
-            self._telemetry_sent += 1
-        except Exception as e:
-            self._telemetry_send_errors += 1
-            self._last_telemetry_error = repr(e)
-
     def send_telemetry_raw(self, data):
         """Send a pre-formatted telemetry string to the coordinator.
 
